@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: dashboard-cht22
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: GOOGLE_SHEET_CSV_URL
+        sync: false
+      - key: LOCAL_XLSX_PATH
+        sync: false
