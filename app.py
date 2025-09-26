@@ -37,7 +37,6 @@ def index():
     df = get_data()
     return render_template("index.html", total_regs=len(df), colunas=list(df.columns))
 
-# 1) Visão Geral
 @app.route("/visao-geral")
 def visao_geral():
     df = get_data()
@@ -54,7 +53,6 @@ def visao_geral():
         ticket_prof=ticket_prof.to_dict(orient="records"),
     )
 
-# 2) Origem e Conversão
 @app.route("/origem-conversao")
 def origem_conversao():
     df = get_data()
@@ -69,7 +67,6 @@ def origem_conversao():
         taxa=taxa
     )
 
-# 3) Profissão por Canal
 @app.route("/profissao-por-canal")
 def profissao_por_canal():
     df = get_data()
@@ -78,7 +75,6 @@ def profissao_por_canal():
         prof_canal=prof_canal.to_dict(orient="records")
     )
 
-# 4) Análise Regional
 @app.route("/analise-regional")
 def analise_regional():
     df = get_data()
@@ -89,7 +85,6 @@ def analise_regional():
         por_estado=por_estado.to_dict(orient="records"),
     )
 
-# 5) Insights de IA
 @app.route("/insights-ia")
 def insights_ia():
     df = get_data()
@@ -106,7 +101,6 @@ def insights_ia():
         insights = ["Defina a planilha para habilitar insights mais robustos."]
     return render_template("insights_ia.html", insights=insights)
 
-# 6) Projeção de Resultados
 @app.route("/projecao-resultados")
 def projecao_resultados():
     df = get_data()
@@ -122,7 +116,6 @@ def projecao_resultados():
             serie = ms.to_dict(orient="records")
     return render_template("projecao_resultados.html", serie=serie)
 
-# 7) Acompanhamento das Vendas
 @app.route("/acompanhamento-vendas")
 def acompanhamento_vendas():
     df = get_data()
@@ -137,7 +130,6 @@ def acompanhamento_vendas():
         por_estado=por_estado.to_dict(orient="records") if len(por_estado) else []
     )
 
-# APIs auxiliares
 @app.route("/api/vendas-profissao")
 def api_vendas_profissao():
     df = get_data()
@@ -146,7 +138,3 @@ def api_vendas_profissao():
         return jsonify([])
     tab = group_sum(df, ["profissao"], value_col).sort_values("total", ascending=False).head(20)
     return jsonify(tab.to_dict(orient="records"))
-
-if __name__ == "__main__":
-    debug = os.getenv("FLASK_DEBUG", "0") == "1"
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=debug)
