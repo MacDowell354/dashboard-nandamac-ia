@@ -8,6 +8,8 @@ services:
     envVars:
       - key: PYTHONUNBUFFERED
         value: "1"
+      - key: PYTHON_VERSION
+        value: "3.12.6"
       - key: GOOGLE_SHEET_CSV_URL
         sync: false
       - key: LOCAL_XLSX_PATH
