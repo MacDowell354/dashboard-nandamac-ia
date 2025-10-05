@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: dashboard-cht22
+    name: dashboard-nandamac-ia
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt
