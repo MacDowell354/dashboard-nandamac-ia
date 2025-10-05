@@ -1,1 +1,32 @@
-<!doctype html><html><body>{% block content %}{% endblock %}</body></html>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard NandaMac IA</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header style="padding: 12px 16px; border-bottom: 1px solid #ddd;">
+        <h2>Dashboard NandaMac IA</h2>
+        <nav>
+            <a href="{{ url_for('index') }}">Início</a> |
+            <a href="{{ url_for('visao_geral') }}">Visão Geral</a> |
+            <a href="{{ url_for('origem_conversao') }}">Origem e Conversão</a> |
+            <a href="{{ url_for('profissao_por_canal') }}">Profissão por Canal</a> |
+            <a href="{{ url_for('analise_regional') }}">Análise Regional</a> |
+            <a href="{{ url_for('insights_ia') }}">Insights IA</a> |
+            <a href="{{ url_for('projecao_resultados') }}">Projeção</a> |
+            <a href="{{ url_for('acompanhamento_vendas') }}">Vendas</a>
+        </nav>
+    </header>
+
+    <main style="padding: 20px;">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer style="margin-top: 40px; text-align: center; font-size: 14px; color: #666;">
+        <p>© 2025 Dashboard NandaMac IA</p>
+    </footer>
+</body>
+</html>
