@@ -9,12 +9,24 @@ from utils import (
     format_ptbr_int, format_ptbr_money
 )
 
+# Carregar variáveis de ambiente (.env)
 load_dotenv()
-app = Flask(__name__)
 
-_DATA_CACHE = { "df": pd.DataFrame(), "loaded_at": None }
-CACHE_TTL_SECONDS = 300
+# Configuração principal do Flask
+app = Flask(
+    __name__,
+    template_folder="templates",   # Garante que a pasta de templates seja reconhecida
+    static_folder="static"         # Define a pasta de arquivos estáticos (css/js/img)
+)
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 
+# Cache de dados
+_DATA_CACHE = {"df": pd.DataFrame(), "loaded_at": None}
+CACHE_TTL_SECONDS = 300  # Tempo de recarregamento do cache em segundos (5 minutos)
+
+# ------------------------------
+# Função para carregar dados
+# ------------------------------
 def get_data():
     now = datetime.utcnow()
     needs_reload = (
@@ -27,11 +39,21 @@ def get_data():
         print(f"[INFO] Dados carregados às {_DATA_CACHE['loaded_at']} (UTC). Linhas: {_DATA_CACHE['df'].shape[0]}")
     return _DATA_CACHE["df"]
 
+# ------------------------------
+# Injetar variáveis globais nos templates
+# ------------------------------
 @app.context_processor
 def inject_globals():
     current_path = request.path
-    return dict(current_path=current_path, format_ptbr_int=format_ptbr_int, format_ptbr_money=format_ptbr_money)
+    return dict(
+        current_path=current_path,
+        format_ptbr_int=format_ptbr_int,
+        format_ptbr_money=format_ptbr_money
+    )
 
+# ------------------------------
+# Rotas principais
+# ------------------------------
 @app.route("/")
 def index():
     df = get_data()
@@ -58,9 +80,9 @@ def origem_conversao():
     df = get_data()
     por_canal = group_count(df, ["canal"]).sort_values("total", ascending=False)
     taxa = []
-    if set(["canal","leads","convertidos"]).issubset(df.columns):
-        taxa_df = (df.groupby("canal")[["leads","convertidos"]].sum().reset_index())
-        taxa_df["taxa_conv"] = (taxa_df["convertidos"] / taxa_df["leads"]).replace([float('inf')], 0).fillna(0)
+    if set(["canal", "leads", "convertidos"]).issubset(df.columns):
+        taxa_df = df.groupby("canal")[["leads", "convertidos"]].sum().reset_index()
+        taxa_df["taxa_conv"] = (taxa_df["convertidos"] / taxa_df["leads"]).replace([float("inf")], 0).fillna(0)
         taxa = taxa_df.sort_values("taxa_conv", ascending=False).to_dict(orient="records")
     return render_template("origem_conversao.html",
         por_canal=por_canal.to_dict(orient="records"),
@@ -70,7 +92,7 @@ def origem_conversao():
 @app.route("/profissao-por-canal")
 def profissao_por_canal():
     df = get_data()
-    prof_canal = group_count(df, ["profissao","canal"]).sort_values("total", ascending=False).head(100)
+    prof_canal = group_count(df, ["profissao", "canal"]).sort_values("total", ascending=False).head(100)
     return render_template("profissao_por_canal.html",
         prof_canal=prof_canal.to_dict(orient="records")
     )
@@ -90,7 +112,7 @@ def insights_ia():
     df = get_data()
     insights = []
     if "profissao" in df.columns and "valor" in df.columns:
-        top = (df.groupby("profissao")["valor"].mean().sort_values(ascending=False).head(5))
+        top = df.groupby("profissao")["valor"].mean().sort_values(ascending=False).head(5)
         for prof, media in top.items():
             insights.append(f"Profissão '{prof}' apresenta ticket médio acima da média ({format_ptbr_money(media)}).")
     if "estado" in df.columns:
@@ -108,11 +130,12 @@ def projecao_resultados():
     if "data" in df.columns and "valor" in df.columns:
         tmp = df.dropna(subset=["data"])
         if not tmp.empty:
-            ms = (tmp
-                  .assign(mes=tmp["data"].dt.to_period("M").dt.start_time)
-                  .groupby("mes")["valor"].sum()
-                  .reset_index()
-                  .rename(columns={"valor": "total"}))
+            ms = (
+                tmp.assign(mes=tmp["data"].dt.to_period("M").dt.start_time)
+                .groupby("mes")["valor"].sum()
+                .reset_index()
+                .rename(columns={"valor": "total"})
+            )
             serie = ms.to_dict(orient="records")
     return render_template("projecao_resultados.html", serie=serie)
 
@@ -130,6 +153,9 @@ def acompanhamento_vendas():
         por_estado=por_estado.to_dict(orient="records") if len(por_estado) else []
     )
 
+# ------------------------------
+# API
+# ------------------------------
 @app.route("/api/vendas-profissao")
 def api_vendas_profissao():
     df = get_data()
@@ -138,3 +164,10 @@ def api_vendas_profissao():
         return jsonify([])
     tab = group_sum(df, ["profissao"], value_col).sort_values("total", ascending=False).head(20)
     return jsonify(tab.to_dict(orient="records"))
+
+# ------------------------------
+# Inicialização
+# ------------------------------
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
