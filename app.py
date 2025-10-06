@@ -4,44 +4,57 @@ from datetime import datetime
 from flask import Flask, render_template, jsonify, request
 from dotenv import load_dotenv
 import pandas as pd
+from jinja2 import ChoiceLoader, FileSystemLoader
 
 from utils import (
     load_dataframe, group_count, group_sum, group_avg,
     format_ptbr_int, format_ptbr_money
 )
 
-# -------------------------------------------------------------------
+# ------------------------------------------------------------
 # Configuração básica
-# -------------------------------------------------------------------
+# ------------------------------------------------------------
 load_dotenv()
+
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATES_DIR = os.path.join(ROOT_DIR, "templates")
+STATIC_DIR = os.path.join(ROOT_DIR, "static")
 
 app = Flask(
     __name__,
-    template_folder="templates",   # onde ficam os HTMLs
-    static_folder="static",        # onde ficam CSS/JS/IMG
+    template_folder=TEMPLATES_DIR,   # absoluto, para evitar ambiguidade
+    static_folder=STATIC_DIR,
 )
-app.config["TEMPLATES_AUTO_RELOAD"] = True  # útil em dev
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 
-# (Opcional, mas ajuda a diagnosticar problemas de template)
-from jinja2 import FileSystemLoader, ChoiceLoader  # noqa: E402
+# Loader explícito do Jinja (garante que 'templates' está na search path)
+app.jinja_loader = ChoiceLoader([
+    FileSystemLoader(TEMPLATES_DIR),
+])
 
-TEMPLATES_DIR = os.path.join(app.root_path, "templates")
-try:
-    print("[DEBUG] templates_dir:", TEMPLATES_DIR)
-    print("[DEBUG] templates list:", sorted(os.listdir(TEMPLATES_DIR)))
-except Exception as e:
-    print("[DEBUG] erro listando templates:", e)
+# Logs de inicialização (o Render mostra isso nos logs)
+def _log_templates_state(prefix="[DEBUG]"):
+    try:
+        items = sorted(os.listdir(TEMPLATES_DIR))
+    except Exception as e:
+        items = [f"<erro listando templates: {e}>"]
+    print(f"{prefix} ROOT_DIR={ROOT_DIR}")
+    print(f"{prefix} TEMPLATES_DIR={TEMPLATES_DIR}")
+    print(f"{prefix} STATIC_DIR={STATIC_DIR}")
+    print(f"{prefix} templates entries={items}")
+    print(f"{prefix} exists(base.html)={os.path.exists(os.path.join(TEMPLATES_DIR,'base.html'))}")
+    print(f"{prefix} exists(index.html)={os.path.exists(os.path.join(TEMPLATES_DIR,'index.html'))}")
 
-app.jinja_loader = ChoiceLoader([FileSystemLoader(TEMPLATES_DIR)])
+_log_templates_state()
 
-# -------------------------------------------------------------------
-# Cache de dados
-# -------------------------------------------------------------------
+# ------------------------------------------------------------
+# Cache simples dos dados
+# ------------------------------------------------------------
 _DATA_CACHE = {"df": pd.DataFrame(), "loaded_at": None}
 CACHE_TTL_SECONDS = 300  # 5 minutos
 
 def get_data():
-    """Carrega a planilha (com cache simples em memória)."""
+    """Carrega a planilha (com cache em memória)."""
     now = datetime.utcnow()
     needs_reload = (
         _DATA_CACHE["loaded_at"] is None
@@ -56,9 +69,9 @@ def get_data():
         )
     return _DATA_CACHE["df"]
 
-# -------------------------------------------------------------------
-# Itens globais disponíveis em todos os templates
-# -------------------------------------------------------------------
+# ------------------------------------------------------------
+# Variáveis globais nos templates
+# ------------------------------------------------------------
 @app.context_processor
 def inject_globals():
     return dict(
@@ -67,9 +80,38 @@ def inject_globals():
         format_ptbr_money=format_ptbr_money,
     )
 
-# -------------------------------------------------------------------
-# Rotas de páginas
-# -------------------------------------------------------------------
+# ------------------------------------------------------------
+# Rotas de diagnóstico (ajudam a confirmar problema no Render)
+# ------------------------------------------------------------
+@app.route("/__debug/templates")
+def debug_templates():
+    _log_templates_state(prefix="[DEBUG-ROUTE]")
+    try:
+        items = sorted(os.listdir(TEMPLATES_DIR))
+    except Exception as e:
+        items = [f"<erro listando templates: {e}>"]
+    return jsonify({
+        "root_dir": ROOT_DIR,
+        "templates_dir": TEMPLATES_DIR,
+        "static_dir": STATIC_DIR,
+        "templates_entries": items,
+        "exists_base_html": os.path.exists(os.path.join(TEMPLATES_DIR, "base.html")),
+        "exists_index_html": os.path.exists(os.path.join(TEMPLATES_DIR, "index.html")),
+    })
+
+@app.route("/__debug/read-base")
+def debug_read_base():
+    path = os.path.join(TEMPLATES_DIR, "base.html")
+    if not os.path.exists(path):
+        return f"base.html NÃO encontrado em {path}", 404
+    # retorna só as primeiras linhas para confirmar presença
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        head = "".join([next(f) for _ in range(20)])
+    return f"base.html encontrado em {path}\n--- INÍCIO ---\n{head}\n--- FIM ---", 200, {"Content-Type": "text/plain; charset=utf-8"}
+
+# ------------------------------------------------------------
+# Rotas principais
+# ------------------------------------------------------------
 @app.route("/")
 def index():
     df = get_data()
@@ -81,10 +123,8 @@ def visao_geral():
     total_linhas = len(df)
     total_vendas = df["vendas"].sum() if "vendas" in df.columns else None
     total_valor = df["valor"].sum() if "valor" in df.columns else None
-
     por_estado = group_count(df, ["estado"]).sort_values("total", ascending=False).head(10)
     ticket_prof = group_avg(df, ["profissao"], "valor").sort_values("media", ascending=False).head(10)
-
     return render_template(
         "visao_geral.html",
         total_linhas=total_linhas,
@@ -98,18 +138,12 @@ def visao_geral():
 def origem_conversao():
     df = get_data()
     por_canal = group_count(df, ["canal"]).sort_values("total", ascending=False)
-
     taxa = []
     if {"canal", "leads", "convertidos"}.issubset(df.columns):
         taxa_df = df.groupby("canal")[["leads", "convertidos"]].sum().reset_index()
         taxa_df["taxa_conv"] = (taxa_df["convertidos"] / taxa_df["leads"]).replace([float("inf")], 0).fillna(0)
         taxa = taxa_df.sort_values("taxa_conv", ascending=False).to_dict(orient="records")
-
-    return render_template(
-        "origem_conversao.html",
-        por_canal=por_canal.to_dict(orient="records"),
-        taxa=taxa,
-    )
+    return render_template("origem_conversao.html", por_canal=por_canal.to_dict(orient="records"), taxa=taxa)
 
 @app.route("/profissao-por-canal")
 def profissao_por_canal():
@@ -119,10 +153,7 @@ def profissao_por_canal():
         .sort_values("total", ascending=False)
         .head(100)
     )
-    return render_template(
-        "profissao_por_canal.html",
-        prof_canal=prof_canal.to_dict(orient="records"),
-    )
+    return render_template("profissao_por_canal.html", prof_canal=prof_canal.to_dict(orient="records"))
 
 @app.route("/analise-regional")
 def analise_regional():
@@ -139,29 +170,24 @@ def analise_regional():
 def insights_ia():
     df = get_data()
     insights = []
-
     if {"profissao", "valor"}.issubset(df.columns):
         top = df.groupby("profissao")["valor"].mean().sort_values(ascending=False).head(5)
         for prof, media in top.items():
             insights.append(
                 f"Profissão '{prof}' apresenta ticket médio acima da média ({format_ptbr_money(media)})."
             )
-
     if "estado" in df.columns:
         cont = df["estado"].value_counts().head(5)
         for uf, n in cont.items():
             insights.append(f"Concentração relevante de registros no estado {uf} ({format_ptbr_int(n)}).")
-
     if not insights:
         insights = ["Defina a planilha para habilitar insights mais robustos."]
-
     return render_template("insights_ia.html", insights=insights)
 
 @app.route("/projecao-resultados")
 def projecao_resultados():
     df = get_data()
     serie = []
-
     if {"data", "valor"}.issubset(df.columns):
         tmp = df.dropna(subset=["data"])
         if not tmp.empty:
@@ -172,16 +198,13 @@ def projecao_resultados():
                 .rename(columns={"valor": "total"})
             )
             serie = ms.to_dict(orient="records")
-
     return render_template("projecao_resultados.html", serie=serie)
 
 @app.route("/acompanhamento-vendas")
 def acompanhamento_vendas():
     df = get_data()
     value_col = "valor" if "valor" in df.columns else ("vendas" if "vendas" in df.columns else None)
-
     total_vendas = df[value_col].sum() if (value_col and value_col in df.columns) else None
-
     por_profissao = (
         group_sum(df, ["profissao"], value_col).sort_values("total", ascending=False).head(20)
         if value_col else pd.DataFrame()
@@ -190,7 +213,6 @@ def acompanhamento_vendas():
         group_sum(df, ["estado"], value_col).sort_values("total", ascending=False).head(20)
         if value_col else pd.DataFrame()
     )
-
     return render_template(
         "acompanhamento_vendas.html",
         value_col=value_col,
@@ -199,9 +221,9 @@ def acompanhamento_vendas():
         por_estado=por_estado.to_dict(orient="records") if len(por_estado) else [],
     )
 
-# -------------------------------------------------------------------
+# ------------------------------------------------------------
 # API
-# -------------------------------------------------------------------
+# ------------------------------------------------------------
 @app.route("/api/vendas-profissao")
 def api_vendas_profissao():
     df = get_data()
@@ -211,9 +233,9 @@ def api_vendas_profissao():
     tab = group_sum(df, ["profissao"], value_col).sort_values("total", ascending=False).head(20)
     return jsonify(tab.to_dict(orient="records"))
 
-# -------------------------------------------------------------------
+# ------------------------------------------------------------
 # Entrada (para rodar localmente)
-# -------------------------------------------------------------------
+# ------------------------------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=True)
