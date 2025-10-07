@@ -1,45 +1,12 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 {% block content %}
-  <h2>Origem & Conversão</h2>
+<h1>Origem & Conversão</h1>
 
-  <div class="grid-2">
-    <section>
-      <h3>Registros por Canal</h3>
-      <table class="table">
-        <thead><tr><th>Canal</th><th>Total</th></tr></thead>
-        <tbody>
-          {% for r in por_canal %}
-          <tr>
-            <td>{{ r.canal or r.get('canal') }}</td>
-            <td class="num">{{ format_ptbr_int(r.total or r.get('total')) }}</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="2" class="muted">Sem dados</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </section>
+<h3>Por Canal</h3>
+{% set table = tbl_canal %}
+{% include "widgets/table.html" %}
 
-    <section>
-      <h3>Taxa de Conversão por Canal</h3>
-      <table class="table">
-        <thead><tr><th>Canal</th><th>Leads</th><th>Convertidos</th><th>Taxa</th></tr></thead>
-        <tbody>
-          {% for r in taxa %}
-          <tr>
-            <td>{{ r.canal or r.get('canal') }}</td>
-            <td class="num">{{ format_ptbr_int(r.leads or r.get('leads')) }}</td>
-            <td class="num">{{ format_ptbr_int(r.convertidos or r.get('convertidos')) }}</td>
-            <td class="num">
-              {% set t = r.taxa_conv or r.get('taxa_conv') %}
-              {% if t is not none %}{{ (t*100)|round(2) }}%{% else %}—{% endif %}
-            </td>
-          </tr>
-          {% else %}
-          <tr><td colspan="4" class="muted">Sem dados</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </section>
-  </div>
+<h3>Taxa por Canal</h3>
+{% set table = tbl_taxa %}
+{% include "widgets/table.html" %}
 {% endblock %}
