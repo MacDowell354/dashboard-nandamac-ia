@@ -1,34 +1,24 @@
 import os
 from datetime import datetime, timezone
 from flask import Flask, render_template, request
-from utils import load_inputs_dashboard  # usa seu utils.py
-
-# ------------------------------------------------------------------------------
-# App & Estado Global simples
-# ------------------------------------------------------------------------------
+from utils import load_inputs_dashboard  # seu utils.py
 
 app = Flask(__name__)
 
-DATA_BLOB = None       # dict com {'mode': 'blocks'|'long', ...}
-DATA_MODE = None       # 'blocks' ou 'long'
-LAST_LOADED_UTC = None # datetime
+DATA_BLOB = None        # dict com {'mode': 'blocks'|'long', ...}
+DATA_MODE = None        # 'blocks' ou 'long'
+LAST_LOADED_UTC = None  # string
 DATA_SRC = os.environ.get("DATA_XLSX_PATH") or os.environ.get("GOOGLE_SHEET_CSV_URL")
 
 def _load_data():
-    """Carrega a primeira aba (conforme utils.load_inputs_dashboard) e
-    guarda um carimbo de data/hora para exibir no rodapé."""
     global DATA_BLOB, DATA_MODE, LAST_LOADED_UTC
     DATA_BLOB = load_inputs_dashboard(DATA_SRC)
     DATA_MODE = DATA_BLOB.get("mode")
     LAST_LOADED_UTC = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S %Z")
     app.logger.info(f"Dados (modo={DATA_MODE}) carregados às {LAST_LOADED_UTC}.")
 
-# Carrega ao subir
+# Carrega ao iniciar
 _load_data()
-
-# ------------------------------------------------------------------------------
-# Contexto comum para templates (menu ativo, horário, modo dos dados, etc.)
-# ------------------------------------------------------------------------------
 
 @app.context_processor
 def inject_globals():
@@ -38,18 +28,13 @@ def inject_globals():
         "data_mode": DATA_MODE,
     }
 
-# ------------------------------------------------------------------------------
-# Rotas
-# ------------------------------------------------------------------------------
-
 @app.route("/")
 def index():
-    # Exibe um diagnóstico rápido do que o loader encontrou
     blocks_info = []
     if DATA_MODE == "blocks":
-        # Mostra as chaves de blocos disponíveis
-        for k in sorted([x for x in DATA_BLOB.keys() if x != "mode"]):
-            blocks_info.append(k)
+      # Mostra as chaves de blocos disponíveis (diagnóstico)
+      for k in sorted([x for x in DATA_BLOB.keys() if x != "mode"]):
+          blocks_info.append(k)
     return render_template("index.html", blocks_info=blocks_info)
 
 @app.route("/visao-geral")
@@ -76,23 +61,38 @@ def insights_ia():
 def projecao_resultados():
     return render_template("projecao_resultados.html")
 
-# NOVA ROTA para corresponder ao link do menu
+# --- ROTA AJUSTADA: passa dados opcionais ao template, se existirem ---
 @app.route("/acompanhamento-vendas")
 def acompanhamento_vendas():
-    return render_template("acompanhamento_vendas.html")
+    """
+    Tenta reaproveitar algum bloco como fonte de linhas de acompanhamento.
+    Se nada existir, enviamos 'linhas=None' e o template mostra a msg padrão.
+    """
+    linhas = None
+    if DATA_MODE == "blocks" and DATA_BLOB:
+        # escolha preferencial de tabela (ajuste conforme seus blocos)
+        preferidas = [
+            "tbl_por_estado",
+            "tbl_por_regiao",
+            "tbl_por_canal",
+            "tbl_ticket_prof",
+            "tbl_taxa_canal",
+        ]
+        for key in preferidas:
+            df = DATA_BLOB.get(key)
+            if df is not None:
+                try:
+                    linhas = df.to_dict(orient="records")
+                    break
+                except Exception:
+                    pass
+    return render_template("acompanhamento_vendas.html", linhas=linhas)
 
-# Opcional: endpoint para recarregar dados manualmente (se quiser)
 @app.route("/reload")
 def reload_data():
     _load_data()
     return "OK - dados recarregados."
 
-
-# ------------------------------------------------------------------------------
-# Entry point (Render usa gunicorn, mas isso ajuda em dev local)
-# ------------------------------------------------------------------------------
-
 if __name__ == "__main__":
-    # Para rodar local (python app.py)
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=bool(int(os.environ.get("FLASK_DEBUG", "0"))))
