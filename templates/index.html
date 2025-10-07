@@ -1,1 +1,35 @@
-{% extends 'base.html' %}{% block content %}<h1>Home</h1>{% endblock %}
+{% extends 'base.html' %}
+{% block content %}
+  <h2>Início</h2>
+
+  {% if total_regs is not none %}
+    <p>Registros carregados: <strong>{{ format_ptbr_int(total_regs) }}</strong></p>
+
+    {% if colunas %}
+      <h3>Colunas detectadas</h3>
+      <ul class="pill-list">
+        {% for c in colunas %}
+          <li>{{ c }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    <p class="hint">
+      Dica: para “modo longo”, a primeira aba deve conter colunas como
+      <code>estado</code>, <code>regiao</code>, <code>canal</code>, <code>profissao</code>, <code>valor</code>/<code>vendas</code>, <code>data</code> (aliases são aceitos).
+    </p>
+
+  {% else %}
+    <p>Operando em <strong>modo “blocks”</strong>.</p>
+    {% if colunas %}
+      <h3>Blocos disponíveis</h3>
+      <ul class="pill-list">
+        {% for k in colunas %}
+          <li>{{ k }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    <p class="hint">
+      Dica: as âncoras na primeira coluna (ex.: <code>KPI_TOTAL_LINHAS</code>, <code>TABELA_POR_ESTADO</code>, <code>SERIE_MENSAL</code>…) alimentam as páginas.
+    </p>
+  {% endif %}
+{% endblock %}
