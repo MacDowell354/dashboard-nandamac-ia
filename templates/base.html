@@ -1,23 +1,27 @@
 <!doctype html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
-  <title>Dashboard CHT22</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link href="{{ url_for('static', filename='styles.css') }}" rel="stylesheet" />
+  <title>Dashboard IA CHT22</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" />
 </head>
 <body>
   <header class="topbar">
-    <h1>Dashboard IA — CHT22</h1>
-    <nav>
-      <a href="{{ url_for('index') }}" class="{{ 'active' if current_path=='/' else '' }}">Início</a>
-      <a href="{{ url_for('visao_geral') }}" class="{{ 'active' if '/visao-geral' in current_path else '' }}">Visão Geral</a>
-      <a href="{{ url_for('origem_conversao') }}" class="{{ 'active' if '/origem-conversao' in current_path else '' }}">Origem & Conversão</a>
-      <a href="{{ url_for('profissao_por_canal') }}" class="{{ 'active' if '/profissao-por-canal' in current_path else '' }}">Profissão x Canal</a>
-      <a href="{{ url_for('analise_regional') }}" class="{{ 'active' if '/analise-regional' in current_path else '' }}">Análise Regional</a>
-      <a href="{{ url_for('insights_ia') }}" class="{{ 'active' if '/insights-ia' in current_path else '' }}">Insights IA</a>
-      <a href="{{ url_for('projecao_resultados') }}" class="{{ 'active' if '/projecao-resultados' in current_path else '' }}">Projeção</a>
-    </nav>
+    <div class="container">
+      <h1 class="brand">Dashboard IA CHT22</h1>
+      <nav class="menu">
+        <a href="{{ url_for('index') }}" class="{{ 'active' if current_path=='/' else '' }}">Início</a>
+        <a href="{{ url_for('visao_geral') }}" class="{{ 'active' if current_path.startswith('/visao-geral') else '' }}">Visão Geral</a>
+        <a href="{{ url_for('origem_conversao') }}" class="{{ 'active' if current_path.startswith('/origem-conversao') else '' }}">Origem & Conversão</a>
+        <a href="{{ url_for('profissao_por_canal') }}" class="{{ 'active' if current_path.startswith('/profissao-por-canal') else '' }}">Profissão × Canal</a>
+        <a href="{{ url_for('analise_regional') }}" class="{{ 'active' if current_path.startswith('/analise-regional') else '' }}">Análise Regional</a>
+        <a href="{{ url_for('projecao_resultados') }}" class="{{ 'active' if current_path.startswith('/projecao-resultados') else '' }}">Projeção</a>
+        <a href="{{ url_for('acompanhamento_vendas') }}" class="{{ 'active' if current_path.startswith('/acompanhamento-vendas') else '' }}">Acompanhamento</a>
+        <a href="{{ url_for('insights_ia') }}" class="{{ 'active' if current_path.startswith('/insights-ia') else '' }}">Insights IA</a>
+      </nav>
+    </div>
   </header>
 
   <main class="container">
@@ -25,7 +29,12 @@
   </main>
 
   <footer class="footer">
-    <small>Fonte: planilha CHT22 • renderizado por Flask</small>
+    <div class="container">
+      <small>
+        Modo de dados: <strong>{{ data_mode or 'desconhecido' }}</strong>
+        {% if data_mode %} • Atualize a planilha para refletir aqui em até 5 min (cache).{% endif %}
+      </small>
+    </div>
   </footer>
 </body>
 </html>
