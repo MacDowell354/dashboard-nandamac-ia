@@ -1,32 +1,31 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard NandaMac IA</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <meta charset="utf-8" />
+  <title>Dashboard CHT22</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="{{ url_for('static', filename='styles.css') }}" rel="stylesheet" />
 </head>
 <body>
-    <header style="padding: 12px 16px; border-bottom: 1px solid #ddd;">
-        <h2>Dashboard NandaMac IA</h2>
-        <nav>
-            <a href="{{ url_for('index') }}">Início</a> |
-            <a href="{{ url_for('visao_geral') }}">Visão Geral</a> |
-            <a href="{{ url_for('origem_conversao') }}">Origem e Conversão</a> |
-            <a href="{{ url_for('profissao_por_canal') }}">Profissão por Canal</a> |
-            <a href="{{ url_for('analise_regional') }}">Análise Regional</a> |
-            <a href="{{ url_for('insights_ia') }}">Insights IA</a> |
-            <a href="{{ url_for('projecao_resultados') }}">Projeção</a> |
-            <a href="{{ url_for('acompanhamento_vendas') }}">Vendas</a>
-        </nav>
-    </header>
+  <header class="topbar">
+    <h1>Dashboard IA — CHT22</h1>
+    <nav>
+      <a href="{{ url_for('index') }}" class="{{ 'active' if current_path=='/' else '' }}">Início</a>
+      <a href="{{ url_for('visao_geral') }}" class="{{ 'active' if '/visao-geral' in current_path else '' }}">Visão Geral</a>
+      <a href="{{ url_for('origem_conversao') }}" class="{{ 'active' if '/origem-conversao' in current_path else '' }}">Origem & Conversão</a>
+      <a href="{{ url_for('profissao_por_canal') }}" class="{{ 'active' if '/profissao-por-canal' in current_path else '' }}">Profissão x Canal</a>
+      <a href="{{ url_for('analise_regional') }}" class="{{ 'active' if '/analise-regional' in current_path else '' }}">Análise Regional</a>
+      <a href="{{ url_for('insights_ia') }}" class="{{ 'active' if '/insights-ia' in current_path else '' }}">Insights IA</a>
+      <a href="{{ url_for('projecao_resultados') }}" class="{{ 'active' if '/projecao-resultados' in current_path else '' }}">Projeção</a>
+    </nav>
+  </header>
 
-    <main style="padding: 20px;">
-        {% block content %}{% endblock %}
-    </main>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
 
-    <footer style="margin-top: 40px; text-align: center; font-size: 14px; color: #666;">
-        <p>© 2025 Dashboard NandaMac IA</p>
-    </footer>
+  <footer class="footer">
+    <small>Fonte: planilha CHT22 • renderizado por Flask</small>
+  </footer>
 </body>
 </html>
