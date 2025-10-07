@@ -1,58 +1,13 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 {% block content %}
-  <h2>Visão Geral</h2>
+<h1>Visão Geral</h1>
 
-  <div class="kpis">
-    <div class="kpi">
-      <div class="kpi-label">Total de Linhas</div>
-      <div class="kpi-value">{{ total_linhas is not none and format_ptbr_int(total_linhas) or '—' }}</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Total de Vendas</div>
-      <div class="kpi-value">{{ total_vendas is not none and format_ptbr_int(total_vendas) or '—' }}</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Total em Valor</div>
-      <div class="kpi-value">{{ total_valor is not none and format_ptbr_money(total_valor) or '—' }}</div>
-    </div>
-  </div>
-
-  <div class="grid-2">
-    <section>
-      <h3>Top Estados (contagem)</h3>
-      <table class="table">
-        <thead><tr><th>Estado</th><th>Total</th></tr></thead>
-        <tbody>
-          {% for r in por_estado %}
-          <tr>
-            <td>{{ r.estado or r.get('estado') }}</td>
-            <td class="num">{{ format_ptbr_int(r.total or r.get('total')) }}</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="2" class="muted">Sem dados</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </section>
-
-    <section>
-      <h3>Ticket Médio por Profissão</h3>
-      <table class="table">
-        <thead><tr><th>Profissão</th><th>Média</th></tr></thead>
-        <tbody>
-          {% for r in ticket_prof %}
-          <tr>
-            <td>{{ r.profissao or r.get('profissao') }}</td>
-            <td class="num">
-              {% set m = r.media or r.get('media') or r.valor or r.get('valor') %}
-              {{ format_ptbr_money(m) }}
-            </td>
-          </tr>
-          {% else %}
-          <tr><td colspan="2" class="muted">Sem dados</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </section>
-  </div>
+{% if tables %}
+  {% for name, table in tables %}
+    <h3>{{ name }}</h3>
+    {% include "widgets/table.html" %}
+  {% endfor %}
+{% else %}
+  <p>Sem dados para exibir.</p>
+{% endif %}
 {% endblock %}
