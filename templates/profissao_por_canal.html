@@ -1,18 +1,7 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 {% block content %}
-  <h2>Profissão × Canal</h2>
-  <table class="table">
-    <thead><tr><th>Profissão</th><th>Canal</th><th>Total</th></tr></thead>
-    <tbody>
-      {% for r in prof_canal %}
-      <tr>
-        <td>{{ r.profissao or r.get('profissao') }}</td>
-        <td>{{ r.canal or r.get('canal') }}</td>
-        <td class="num">{{ format_ptbr_int(r.total or r.get('total')) }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="3" class="muted">Sem dados</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<h1>Profissão x Canal</h1>
+
+{% set table = tbl %}
+{% include "widgets/table.html" %}
 {% endblock %}
