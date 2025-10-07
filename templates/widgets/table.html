@@ -1,0 +1,24 @@
+{% if table and table.columns and table.rows %}
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          {% for c in table.columns %}
+            <th>{{ c }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in table.rows %}
+          <tr>
+            {% for c in table.columns %}
+              <td>{{ r[c] }}</td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p><em>Sem dados para exibir.</em></p>
+{% endif %}
