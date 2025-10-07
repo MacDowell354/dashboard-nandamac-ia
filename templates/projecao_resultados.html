@@ -1,21 +1,7 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 {% block content %}
-  <h2>Projeção de Resultados</h2>
-  <table class="table">
-    <thead><tr><th>Mês</th><th>Total</th></tr></thead>
-    <tbody>
-      {% for r in serie %}
-      <tr>
-        <td>
-          {% set m = r.mes or r.get('mes') %}
-          {{ m }}
-        </td>
-        <td class="num">{{ format_ptbr_money(r.total or r.get('total')) }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="2" class="muted">Sem dados</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  <p class="hint">Para o modo “long”, garanta colunas <code>data</code> (datetime) e <code>valor</code>.</p>
+<h1>Projeção de Resultados</h1>
+
+{% set table = tbl %}
+{% include "widgets/table.html" %}
 {% endblock %}
