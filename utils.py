@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime
 import pandas as pd
 
@@ -69,12 +70,69 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
         df["data"] = pd.to_datetime(df["data"], errors="coerce")
     return df
 
+# ---------------------------
+# Resolvedor de URLs (GSheets)
+# ---------------------------
+
+_GSHEET_ID_RE = re.compile(r"/d/([a-zA-Z0-9-_]+)")
+
+def _ensure_export_xlsx_url(src: str) -> str:
+    """
+    Se receber um link /edit?... público do Google Sheets, converte para
+    /export?format=xlsx. Caso já seja export, mantém.
+    """
+    if not isinstance(src, str):
+        return src
+    if "docs.google.com/spreadsheets" in src and "/export" not in src:
+        m = _GSHEET_ID_RE.search(src)
+        if m:
+            sheet_id = m.group(1)
+            return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+    return src
+
+# ---------------------------
+# Leitura da 1ª aba com fallback
+# ---------------------------
+
 def _read_inputs_first_sheet(src: str | bytes | bytearray) -> pd.DataFrame:
-    # lê a 1ª aba
-    xls = pd.ExcelFile(src)
-    sheet = xls.sheet_names[0]
-    df = pd.read_excel(xls, sheet_name=sheet)
-    return _normalize_columns(df)
+    """
+    Tenta ler XLSX (1ª aba). Se der erro (404, engine, rede, permissão),
+    cai para CSV usando GOOGLE_SHEET_CSV_URL.
+    """
+    # 1) tenta XLSX (corrigindo URL se vier /edit)
+    src_xlsx = _ensure_export_xlsx_url(src if isinstance(src, str) else "")
+
+    last_err = None
+
+    # Tentativa XLSX
+    try:
+        if src_xlsx:
+            xls = pd.ExcelFile(src_xlsx)
+            sheet = xls.sheet_names[0]
+            df = pd.read_excel(xls, sheet_name=sheet)
+            return _normalize_columns(df)
+    except Exception as e:
+        last_err = e  # guarda para logging e continuar no fallback
+
+    # Fallback CSV (aba Inputs) – precisa estar público
+    csv_url = os.environ.get("GOOGLE_SHEET_CSV_URL", "").strip()
+    if csv_url:
+        try:
+            df_csv = pd.read_csv(csv_url)
+            return _normalize_columns(df_csv)
+        except Exception as e2:
+            last_err = e2
+
+    # Se chegou aqui, não conseguiu nem XLSX nem CSV
+    msg = [
+        "Falha ao carregar a planilha.",
+        f"DATA_XLSX_PATH utilizado: {src_xlsx or '<vazio>'}",
+        f"GOOGLE_SHEET_CSV_URL: {csv_url or '<vazio>'}",
+        f"Erro mais recente: {repr(last_err)}",
+        "Verifique se o arquivo está com permissão 'Qualquer pessoa com o link' (Leitor),",
+        "e se as variáveis de ambiente apontam para URLs de /export (xlsx/csv).",
+    ]
+    raise RuntimeError("\n".join(msg))
 
 def _find_blocks(raw_df: pd.DataFrame):
     """
@@ -128,9 +186,10 @@ def load_inputs_dashboard(src: str | bytes | bytearray | None = None):
       {'mode':'blocks', <blocos...>}
     """
     if src is None:
-        src = os.environ.get("DATA_XLSX_PATH")
-        if not src:
+        src_env = os.environ.get("DATA_XLSX_PATH")
+        if not src_env:
             raise RuntimeError("Defina DATA_XLSX_PATH com o caminho/URL da planilha.")
+        src = src_env
 
     # tenta tabela longa
     df_long = _read_inputs_first_sheet(src)
@@ -140,9 +199,18 @@ def load_inputs_dashboard(src: str | bytes | bytearray | None = None):
     if has_min and has_metric:
         return {"mode":"long", "df": df_long}
 
-    # senão, blocos
-    xls = pd.ExcelFile(src)
-    raw = pd.read_excel(xls, sheet_name=0, header=None)
+    # senão, blocos (releia bruto da 1ª aba, sem header, para achar âncoras)
+    try:
+        xls_url = _ensure_export_xlsx_url(src if isinstance(src, str) else "")
+        xls = pd.ExcelFile(xls_url)
+        raw = pd.read_excel(xls, sheet_name=0, header=None)
+    except Exception:
+        # se nem XLSX bruto der, tenta CSV bruto (menos comum pra blocos, mas evita crash)
+        csv_url = os.environ.get("GOOGLE_SHEET_CSV_URL", "").strip()
+        if not csv_url:
+            raise
+        raw = pd.read_csv(csv_url, header=None)
+
     blocks = _find_blocks(raw)
 
     # pós-processos úteis
