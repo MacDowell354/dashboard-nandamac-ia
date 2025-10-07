@@ -1,1 +1,11 @@
-{% extends 'base.html' %}{% block content %}<h1>Insights de IA</h1>{% endblock %}
+{% extends 'base.html' %}
+{% block content %}
+  <h2>Insights (IA)</h2>
+  <ul class="insights">
+    {% for line in insights %}
+      <li>{{ line }}</li>
+    {% else %}
+      <li class="muted">Nenhum insight disponível.</li>
+    {% endfor %}
+  </ul>
+{% endblock %}
