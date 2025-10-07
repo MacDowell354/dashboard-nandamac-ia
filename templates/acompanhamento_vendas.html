@@ -1,46 +1,34 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
+
 {% block content %}
   <h2>Acompanhamento de Vendas</h2>
 
-  {% if value_col %}
-    <p>Métrica usada: <code>{{ value_col }}</code></p>
-  {% else %}
-    <p class="muted">Sem coluna de valor/vendas disponível para esta visão.</p>
-  {% endif %}
-
-  <div class="grid-2">
-    <section>
-      <h3>Por Profissão</h3>
-      <table class="table">
-        <thead><tr><th>Profissão</th><th>Total</th></tr></thead>
-        <tbody>
-          {% for r in por_profissao %}
+  {# 
+    'linhas' chega do app.py. Se houver dados (records de um DataFrame),
+    mostramos uma tabelinha. Caso contrário, exibimos a mensagem padrão.
+  #}
+  {% if linhas %}
+    <div class="table-wrap">
+      <table>
+        <thead>
           <tr>
-            <td>{{ r.profissao or r.get('profissao') }}</td>
-            <td class="num">{{ format_ptbr_money(r.total or r.get('total')) if value_col else format_ptbr_int(r.total or r.get('total')) }}</td>
+            {% for col in linhas[0].keys() %}
+              <th>{{ col }}</th>
+            {% endfor %}
           </tr>
-          {% else %}
-          <tr><td colspan="2" class="muted">Sem dados</td></tr>
-          {% endif %}
-        </tbody>
-      </table>
-    </section>
-
-    <section>
-      <h3>Por Estado</h3>
-      <table class="table">
-        <thead><tr><th>Estado</th><th>Total</th></tr></thead>
+        </thead>
         <tbody>
-          {% for r in por_estado %}
-          <tr>
-            <td>{{ r.estado or r.get('estado') }}</td>
-            <td class="num">{{ format_ptbr_money(r.total or r.get('total')) if value_col else format_ptbr_int(r.total or r.get('total')) }}</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="2" class="muted">Sem dados</td></tr>
+          {% for row in linhas %}
+            <tr>
+              {% for v in row.values() %}
+                <td>{{ v }}</td>
+              {% endfor %}
+            </tr>
           {% endfor %}
         </tbody>
       </table>
-    </section>
-  </div>
+    </div>
+  {% else %}
+    <p class="muted">Sem dados para exibir.</p>
+  {% endif %}
 {% endblock %}
