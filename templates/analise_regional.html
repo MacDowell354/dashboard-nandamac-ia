@@ -1,1 +1,40 @@
-{% extends 'base.html' %}{% block content %}<h1>Análise Regional</h1>{% endblock %}
+{% extends 'base.html' %}
+{% block content %}
+  <h2>Análise Regional</h2>
+
+  <div class="grid-2">
+    <section>
+      <h3>Por Região</h3>
+      <table class="table">
+        <thead><tr><th>Região</th><th>Total</th></tr></thead>
+        <tbody>
+          {% for r in por_regiao %}
+          <tr>
+            <td>{{ r.regiao or r.get('regiao') }}</td>
+            <td class="num">{{ format_ptbr_int(r.total or r.get('total')) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="2" class="muted">Sem dados</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h3>Por Estado</h3>
+      <table class="table">
+        <thead><tr><th>Estado</th><th>Total</th></tr></thead>
+        <tbody>
+          {% for r in por_estado %}
+          <tr>
+            <td>{{ r.estado or r.get('estado') }}</td>
+            <td class="num">{{ format_ptbr_int(r.total or r.get('total')) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="2" class="muted">Sem dados</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </div>
+{% endblock %}
