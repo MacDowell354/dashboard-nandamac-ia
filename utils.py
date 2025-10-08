@@ -1,63 +1,39 @@
 import os
-import re
+from io import BytesIO
+from datetime import datetime
 import pandas as pd
+import requests
 
-# ===========================
-# Normalização de colunas
-# ===========================
+# ---------------------------
+# Config / aliases de colunas
+# ---------------------------
 
 COLUMN_ALIAS = {
-    # dimensões
     "uf": "estado",
     "est": "estado",
-    "estado": "estado",
     "regiao": "regiao",
     "região": "regiao",
-    "canal": "canal",
     "canal_de_aquisicao": "canal",
-    "profissao": "profissao",
     "profissão": "profissao",
     "profissao ": "profissao",
-
-    # métricas
-    "vendas": "vendas",
     "qtde_vendas": "vendas",
-    "qtd_vendas": "vendas",
-    "qtd": "vendas",
-    "quantidade": "vendas",
-    "valor": "valor",
-    "faturamento": "valor",
-    "receita": "valor",
-    "ticket": "valor",  # se vier só 'ticket', tratamos como valor
-    "valor_total": "valor",
-    "total": "valor",
-
-    # séries
+    "ticket": "valor",
     "dt": "data",
-    "data": "data",
     "mes": "mes",
-    "mês": "mes",
 }
 
-# anchors (só usados se não acharmos uma planilha “longa”)
-ANCHORS = {
-    "KPI_TOTAL_LINHAS": "kpi_total_linhas",
-    "KPI_TOTAL_VENDAS": "kpi_total_vendas",
-    "KPI_TOTAL_VALOR":  "kpi_total_valor",
-
-    "TABELA_POR_ESTADO": "tbl_por_estado",
-    "TABELA_POR_REGIAO": "tbl_por_regiao",
-    "TABELA_TICKET_PROFISSAO": "tbl_ticket_prof",
-    "TABELA_POR_CANAL": "tbl_por_canal",
-    "TABELA_TAXA_CANAL": "tbl_taxa_canal",
-    "TABELA_PROFISSAO_X_CANAL": "tbl_prof_canal",
-
-    "SERIE_MENSAL": "serie_mensal",
+# títulos (em A) que marcam INÍCIO de bloco na sua 1ª aba
+SECTION_TOKENS = {
+    "PROFISSOES": "tbl_prof_canal",
+    "ESTADO X PROFISSÃO": "tbl_estado_prof",
+    "REGIÃO POR PROFISSÃO": "tbl_regiao_prof",
+    "vendas_realizadas": "vendas",
+    "progecao_de_resultados": "projecao_resultados",
 }
 
-# ===========================
-# Helpers
-# ===========================
+# ---------------------------
+# Utilidades
+# ---------------------------
 
 def _slug_pt(s: str) -> str:
     s = str(s or "").strip().lower()
@@ -70,8 +46,7 @@ def _slug_pt(s: str) -> str:
     }
     for k,v in rep.items():
         s = s.replace(k,v)
-    s = re.sub(r"\s+", "_", s)
-    return s
+    return s.replace(" ", "_")
 
 def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
@@ -82,201 +57,224 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
         dest = COLUMN_ALIAS.get(key, key)
         rename[c] = dest
     df = df.rename(columns=rename)
-    # tipos comuns
+    # normaliza campos típicos
     if "data" in df.columns:
         df["data"] = pd.to_datetime(df["data"], errors="coerce")
-    if "mes" in df.columns:
-        df["mes"] = pd.to_datetime(df["mes"], errors="coerce")
     return df
 
-def _is_long_candidate(df: pd.DataFrame) -> bool:
-    if df is None or df.empty:
-        return False
-    cols = set(map(str, df.columns))
-    dims = {"estado", "regiao", "canal", "profissao"}
-    has_any_dim = len(cols.intersection(dims)) >= 1
-    has_metric = ("valor" in cols) or ("vendas" in cols)
-    return has_any_dim and has_metric
+def _is_blank_row(sr: pd.Series) -> bool:
+    return sr.isna().all() or (sr.astype(str).str.strip() == "").all()
 
-def _looks_like_google_sheets(url: str) -> bool:
-    return "docs.google.com/spreadsheets" in (url or "")
+def _download_bytes(url: str) -> bytes:
+    r = requests.get(url, timeout=30)
+    r.raise_for_status()
+    return r.content
 
-def _to_gsheets_export(url: str, fmt: str = "xlsx") -> str:
+# ---------------------------
+# Leituras
+# ---------------------------
+
+def _read_csv_url_if_any() -> pd.DataFrame | None:
     """
-    Converte qualquer link de edição/visualização do Google Sheets em export.
-    - /edit?gid=...  -> /export?format=xlsx
-    - se já vier format=csv, mantém CSV
+    Se GOOGLE_SHEET_CSV_URL estiver definido, lê como tabela 'longa'.
     """
-    if "export?format=" in url:
-        return url  # já é export
-    base = url.split("/edit")[0]
-    return f"{base}/export?format={fmt}"
+    csv_url = os.environ.get("GOOGLE_SHEET_CSV_URL", "").strip()
+    if not csv_url:
+        return None
+    df = pd.read_csv(csv_url)
+    return _normalize_columns(df)
 
-def _read_any(src: str | bytes | bytearray) -> dict:
+def _read_first_sheet_bytes(src: str | bytes | bytearray) -> pd.DataFrame:
     """
-    Lê o arquivo/URL em memória:
-    - Se for CSV (format=csv), retorna {"type":"csv","df":DataFrame}
-    - Caso contrário, tenta Excel e retorna {"type":"excel","xls":ExcelFile}
+    Lê a 1ª aba com HEADER=True (para o caso da tabela longa comum).
     """
-    if isinstance(src, (bytes, bytearray)):
-        # tentar Excel direto do binário
-        xls = pd.ExcelFile(src)
-        return {"type": "excel", "xls": xls}
+    xls = pd.ExcelFile(src)
+    sheet = xls.sheet_names[0]
+    df = pd.read_excel(xls, sheet_name=sheet)
+    return _normalize_columns(df)
 
-    url = str(src)
-
-    # Google Sheets: sempre tentar export XLSX por padrão
-    if _looks_like_google_sheets(url) and "export?format=" not in url:
-        url = _to_gsheets_export(url, fmt="xlsx")
-
-    # CSV?
-    if "export?format=csv" in url or url.lower().endswith(".csv"):
-        df = pd.read_csv(url)
-        return {"type": "csv", "df": df}
-
-    # fallback Excel
-    xls = pd.ExcelFile(url)
-    return {"type": "excel", "xls": xls}
-
-# ===========================
-# Leitura “longa” (todas as abas)
-# ===========================
-
-def _read_best_long_df(src: str | bytes | bytearray) -> pd.DataFrame | None:
+def _read_first_sheet_raw(src: str | bytes | bytearray) -> pd.DataFrame:
     """
-    Procura, entre TODAS as abas, uma que pareça “longa” (dimensões + métrica).
-    Retorna o primeiro match normalizado. Se nada servir, retorna None.
+    Lê a 1ª aba com header=None para detectar blocos por linhas.
     """
-    handle = _read_any(src)
+    xls = pd.ExcelFile(src)
+    raw = pd.read_excel(xls, sheet_name=0, header=None)
+    return raw
 
-    if handle["type"] == "csv":
-        df = _normalize_columns(handle["df"])
-        return df if _is_long_candidate(df) else None
+# ---------------------------
+# Parser específico da sua 1ª aba (inputs_dashboard_cht22)
+# ---------------------------
 
-    xls: pd.ExcelFile = handle["xls"]
-
-    # Preferências de nome (se existirem)
-    preferred_names = [
-        "Base", "Resultado", "Base por Estado", "Região", "Estado", "Dados", "Data"
-    ]
-
-    # 1) tentar preferidas (ordem)
-    for name in preferred_names:
-        if name in xls.sheet_names:
-            df = pd.read_excel(xls, sheet_name=name)
-            df = _normalize_columns(df)
-            if _is_long_candidate(df):
-                return df
-
-    # 2) varrer todas as abas
-    for sheet in xls.sheet_names:
-        df = pd.read_excel(xls, sheet_name=sheet)
-        df = _normalize_columns(df)
-        if _is_long_candidate(df):
-            return df
-
-    return None
-
-# ===========================
-# Parser de blocos (fallback)
-# ===========================
-
-def _find_blocks(raw_df: pd.DataFrame):
+def _extract_kv_block_from_inputs(raw: pd.DataFrame) -> pd.DataFrame | None:
     """
-    Procura âncoras na PRIMEIRA coluna.
-    Layout esperado:
-      A: <ÂNCORA>
-      A+1: cabeçalhos (linha)
-      próximas linhas: dados, até linha completamente vazia.
+    Procura um cabeçalho com 'CAMPO' e 'VALOR ATUAL' (qualquer posição na linha).
+    Lê até encontrar linha em branco OU um título de seção (em A).
+    Retorna DataFrame com colunas: campo, descricao, valor, celula_ref, tipo, celula
     """
-    if raw_df is None or raw_df.empty:
-        return {}
+    if raw is None or raw.empty:
+        return None
 
-    # usar primeira coluna como “tokens”
-    col0_name = raw_df.columns[0]
-    col0 = raw_df[col0_name].astype(str).str.strip()
+    nrows = len(raw)
+    header_row = None
+    for i in range(min(50, nrows)):  # procura no topo
+        row_vals = raw.iloc[i].astype(str).str.strip().tolist()
+        if "CAMPO" in row_vals and "VALOR ATUAL" in row_vals:
+            header_row = i
+            break
+    if header_row is None:
+        return None
 
+    # monta header
+    header = raw.iloc[header_row].tolist()
+    # linhas de dados começam na próxima linha
+    data_start = header_row + 1
+    data_rows = []
+    for j in range(data_start, nrows):
+        a_val = str(raw.iloc[j, 0]).strip() if raw.shape[1] > 0 else ""
+        # para se acharmos título de seção ou linha em branco (primeira coluna vazia E linha toda vazia)
+        is_section = a_val in SECTION_TOKENS
+        if is_section or _is_blank_row(raw.iloc[j]):
+            break
+        data_rows.append(raw.iloc[j].tolist())
+
+    if not data_rows:
+        return None
+
+    df = pd.DataFrame(data_rows, columns=header)
+    # normaliza nomes esperados
+    colmap = {}
+    for c in df.columns:
+        k = _slug_pt(c)
+        if k == "descricao" or k == "descrição":
+            colmap[c] = "descricao"
+        elif k in ("valor_atual","valor","valor_atual_"):
+            colmap[c] = "valor"
+        elif k in ("celula_ref","celula_ref_","célula_ref","celula__ref"):
+            colmap[c] = "celula_ref"
+        elif k in ("tipo",):
+            colmap[c] = "tipo"
+        elif k in ("celula","célula"):
+            colmap[c] = "celula"
+        elif k in ("campo",):
+            colmap[c] = "campo"
+    df = df.rename(columns=colmap)
+
+    # mantém só as colunas úteis
+    keep = [c for c in ["campo","descricao","valor","celula_ref","tipo","celula"] if c in df.columns]
+    df = df[keep].copy()
+    # limpeza básica
+    df["campo"] = df["campo"].astype(str).str.strip()
+    df = df[df["campo"] != ""]
+    return df.reset_index(drop=True)
+
+def _extract_sections_after_kv(raw: pd.DataFrame) -> dict:
+    """
+    Após o bloco KV, detecta seções marcadas por um TÍTULO na coluna A
+    (exatamente igual às chaves de SECTION_TOKENS). Para cada seção:
+      - a linha imediatamente abaixo é o cabeçalho
+      - segue lendo até linha vazia ou próximo título
+    Retorna dict { block_key: DataFrame }
+    """
     blocks = {}
-    i, n = 0, len(raw_df)
+    nrows = len(raw)
+    i = 0
+    # 1) pular o topo até o início da primeira seção "oficial" (ou o fim do KV)
+    # já que o KV extractor para ao encontrar linha vazia ou título, aqui só precisamos
+    # varrer o arquivo todo em busca de títulos
+    while i < nrows:
+        a_val = str(raw.iloc[i, 0]).strip()
+        if a_val in SECTION_TOKENS:
+            block_key = SECTION_TOKENS[a_val]
+            header_row = i + 1
+            # skip linhas vazias entre título e header
+            while header_row < nrows and _is_blank_row(raw.iloc[header_row]):
+                header_row += 1
+            if header_row >= nrows:
+                break
+            header = raw.iloc[header_row].tolist()
+            data_start = header_row + 1
 
-    while i < n:
-        token = col0.iloc[i]
-        if token in ANCHORS:
-            key = ANCHORS[token]
-            head_row = i + 1
-            data_row = i + 2
-            if head_row < n:
-                header = raw_df.iloc[head_row].tolist()
-                rows = []
-                j = data_row
-                while j < n and not raw_df.iloc[j].isna().all():
-                    rows.append(raw_df.iloc[j].tolist())
-                    j += 1
-                if rows:
-                    blk = pd.DataFrame(rows, columns=header)
-                    blk = _normalize_columns(blk)
-                    blocks[key] = blk
-                i = j
-                continue
-        i += 1
+            rows = []
+            j = data_start
+            while j < nrows:
+                next_title = str(raw.iloc[j, 0]).strip()
+                if next_title in SECTION_TOKENS or _is_blank_row(raw.iloc[j]):
+                    break
+                rows.append(raw.iloc[j].tolist())
+                j += 1
+
+            if rows:
+                df = pd.DataFrame(rows, columns=header)
+                df = _normalize_columns(df)
+                blocks[block_key] = df.reset_index(drop=True)
+            i = j
+        else:
+            i += 1
     return blocks
 
-# ===========================
+# ---------------------------
 # Loader principal
-# ===========================
+# ---------------------------
 
 def load_inputs_dashboard(src: str | bytes | bytearray | None = None):
     """
-    Estratégia:
-      1) Procurar uma aba “longa” em QUALQUER aba (dimensões + métrica).
-         - Se encontrar, retorna {'mode':'long','df': DataFrame}
-      2) Caso não encontre, tentar “blocos” na 1ª aba (anchors).
-         - Retorna {'mode':'blocks', <blocos...>}
+    1) Se GOOGLE_SHEET_CSV_URL estiver setado, usa como TABELA LONGA.
+    2) Caso contrário, lê a 1ª aba e tenta:
+       - extrair bloco KV (grid CAMPO/VALOR ATUAL)
+       - extrair seções nomeadas (PROFISSOES, ESTADO X PROFISSÃO, etc.)
+       Retorna em modo=blocks.
     """
+    # 1) Tenta CSV longo
+    df_long = _read_csv_url_if_any()
+    if df_long is not None and not df_long.empty:
+        cols = set(map(str, df_long.columns))
+        has_min = {"estado","canal","profissao"}.issubset(cols)
+        has_metric = ("valor" in cols) or ("vendas" in cols)
+        if has_min and has_metric:
+            return {"mode": "long", "df": df_long}
+
+    # 2) XLSX 1ª aba (sua inputs_dashboard_cht22)
     if src is None:
-        # aceita tanto DATA_XLSX_PATH (xlsx) quanto GOOGLE_SHEET_CSV_URL (csv)
-        src = os.environ.get("DATA_XLSX_PATH") or os.environ.get("GOOGLE_SHEET_CSV_URL")
-        if not src:
-            raise RuntimeError("Defina DATA_XLSX_PATH ou GOOGLE_SHEET_CSV_URL com o caminho/URL da planilha.")
+        # permite apontar para link XLSX do Google Sheets (export?format=xlsx)
+        xlsx_url = os.environ.get("DATA_XLSX_PATH", "").strip()
+        if not xlsx_url:
+            raise RuntimeError("Defina GOOGLE_SHEET_CSV_URL (tabela longa) ou DATA_XLSX_PATH (xlsx).")
+        src = _download_bytes(xlsx_url)
 
-    # 1) LONG MODE (qualquer aba)
-    df_long = _read_best_long_df(src)
-    if df_long is not None and _is_long_candidate(df_long):
-        return {"mode": "long", "df": df_long}
+    # tenta primeiro ler com header=True (só para detectar se por acaso já é longa)
+    try:
+        df_try = _read_first_sheet_bytes(src)
+        cols = set(map(str, df_try.columns))
+        if {"estado","canal","profissao"}.issubset(cols) and (("valor" in cols) or ("vendas" in cols)):
+            return {"mode": "long", "df": df_try}
+    except Exception:
+        pass  # segue para o parser de blocos
 
-    # 2) BLOCKS MODE (fallback) — tenta ler a 1ª aba sem header para varrer anchors
-    handle = _read_any(src)
-    if handle["type"] == "csv":
-        raw = handle["df"].copy()
-        raw.columns = raw.columns.astype(str)  # segurança
-        raw = raw.reset_index(drop=True)
-    else:
-        xls: pd.ExcelFile = handle["xls"]
-        first = xls.sheet_names[0]
-        raw = pd.read_excel(xls, sheet_name=first, header=None)
+    # parser de blocos na 1ª aba
+    raw = _read_first_sheet_raw(src)
+    blocks = {}
 
-    blocks = _find_blocks(raw)
+    # 2a) KV
+    kv = _extract_kv_block_from_inputs(raw)
+    if kv is not None and not kv.empty:
+        blocks["kv"] = kv
 
-    # pós-processos úteis
-    if "tbl_taxa_canal" in blocks:
-        b = blocks["tbl_taxa_canal"].copy()
-        for c in ("leads", "convertidos"):
-            if c in b.columns:
-                b[c] = pd.to_numeric(b[c], errors="coerce")
-        if "taxa_conv" not in b.columns and {"convertidos", "leads"}.issubset(b.columns):
-            b["taxa_conv"] = (b["convertidos"] / b["leads"]).fillna(0)
-        blocks["tbl_taxa_canal"] = b
+    # 2b) Seções abaixo do KV
+    more = _extract_sections_after_kv(raw)
+    blocks.update(more)
 
-    if "serie_mensal" in blocks and "mes" in blocks["serie_mensal"].columns:
-        s = blocks["serie_mensal"].copy()
-        s["mes"] = pd.to_datetime(s["mes"], errors="coerce")
-        blocks["serie_mensal"] = s
+    # Pós-processos úteis (exemplos)
+    if "tbl_prof_canal" in blocks:
+        # remover colunas '%', se existirem (pivôs costumam trazer pares Qtd/%)
+        b = blocks["tbl_prof_canal"].copy()
+        b = b[[c for c in b.columns if not str(c).strip().endswith("%")]]
+        blocks["tbl_prof_canal"] = b.reset_index(drop=True)
 
     return {"mode": "blocks", **blocks}
 
-# ===========================
-# Agregadores (usados nas rotas)
-# ===========================
+# ---------------------------
+# helpers de agregação (usados nas rotas quando 'long')
+# ---------------------------
 
 def group_count(df: pd.DataFrame, by_cols: list[str]) -> pd.DataFrame:
     if df is None or df.empty:
@@ -287,33 +285,35 @@ def group_count(df: pd.DataFrame, by_cols: list[str]) -> pd.DataFrame:
 def group_sum(df: pd.DataFrame, by_cols: list[str], value_col: str) -> pd.DataFrame:
     if not value_col or value_col not in df.columns:
         return pd.DataFrame(columns=[*by_cols, "total"])
-    g = (
-        df.groupby(by_cols)[value_col]
-          .sum()
-          .reset_index()
-          .rename(columns={value_col: "total"})
-    )
+    g = (df.groupby(by_cols)[value_col]
+           .sum()
+           .reset_index()
+           .rename(columns={value_col:"total"}))
     return g
 
 def group_avg(df: pd.DataFrame, by_cols: list[str], value_col: str) -> pd.DataFrame:
     if not value_col or value_col not in df.columns:
         return pd.DataFrame(columns=[*by_cols, "media"])
-    g = (
-        df.groupby(by_cols)[value_col]
-          .mean()
-          .reset_index()
-          .rename(columns={value_col: "media"})
-    )
+    g = (df.groupby(by_cols)[value_col]
+           .mean()
+           .reset_index()
+           .rename(columns={value_col:"media"}))
     return g
+
+# ---------------------------
+# formatações PT-BR
+# ---------------------------
 
 def format_ptbr_int(x):
     try:
-        return f"{int(x):,}".replace(",", ".")
+        return f"{int(float(str(x).replace('.','').replace(',','.'))):,}".replace(",", ".")
     except Exception:
         return "-"
 
 def format_ptbr_money(x):
     try:
-        return f"R$ {float(x):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        v = str(x)
+        v = v.replace("R$","").strip().replace(".","").replace(",",".")
+        return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except Exception:
         return "R$ -"
