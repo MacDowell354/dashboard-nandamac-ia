@@ -1,57 +1,81 @@
-from flask import render_template, request
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dashboard IA — CHT22</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:#0f1117; --card:#151925; --text:#e7e7ea; --muted:#a0a3ad;
+      --brand:#8b5cf6; --brand-2:#22d3ee; --border:#23283b; --active:#1f2540;
+    }
+    *{box-sizing:border-box} html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue','Noto Sans',Arial,sans-serif;line-height:1.45}
+    a{color:inherit;text-decoration:none}
+    header{border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10;background:linear-gradient(180deg,rgba(15,17,23,.95),rgba(15,17,23,.85));backdrop-filter:saturate(180%) blur(8px)}
+    .wrap{max-width:1200px;margin:0 auto;padding:20px}
+    .brand{font-weight:700;font-size:22px;letter-spacing:.2px;display:flex;gap:10px;align-items:center}
+    .pill{display:inline-flex;align-items:center;gap:8px;padding:2px 10px;border:1px solid var(--border);border-radius:999px;background:var(--active);font-size:12px;color:var(--muted)}
+    nav{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px}
+    nav a{padding:8px 12px;border-radius:10px;border:1px solid transparent;color:var(--muted);transition:.18s ease;background,.18s ease color,.18s ease border-color;font-weight:500}
+    nav a:hover{color:var(--text);background:#151a2b;border-color:var(--border)}
+    nav a.active{color:var(--text);background:var(--active);border-color:var(--border)}
+    main{max-width:1200px;margin:22px auto;padding:0 20px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px}
+    footer{max-width:1200px;margin:32px auto 40px;padding:0 20px;color:var(--muted);font-size:13px}
+    .meta{display:flex;gap:12px;flex-wrap:wrap}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div class="brand">
+        Dashboard IA — CHT22
+        <span class="pill">Fonte: planilha CHT22 • renderizado por Flask</span>
+      </div>
 
-# (opcional) deixa disponível 'current_path' se algum template antigo ainda usar
-@app.context_processor
-def inject_current_path():
-    try:
-        return {"current_path": request.path or ""}
-    except Exception:
-        return {"current_path": ""}
+      <nav>
+        <a href="{{ url_for('index') }}"
+           class="{{ 'active' if request.path == '/' else '' }}">Início</a>
 
-# helpers para passar infos no rodapé sem quebrar se não existirem
-def _ui_globals():
-    last_loaded = None
-    data_mode = None
-    try:
-        # se você já calcula isso em outro lugar, pode reaproveitar
-        last_loaded = globals().get("LAST_LOADED") or globals().get("DATA_LOADED_AT")
-        data_mode = globals().get("DATA_MODE")
-    except Exception:
-        pass
-    return {"last_loaded": last_loaded, "data_mode": data_mode}
+        <a href="{{ url_for('visao_geral') }}"
+           class="{{ 'active' if request.path.startswith('/visao-geral') else '' }}">Visão Geral</a>
 
-# --- ROTAS MÍNIMAS (adicione as que faltarem no seu app) ---
+        <a href="{{ url_for('origem_conversao') }}"
+           class="{{ 'active' if request.path.startswith('/origem-conversao') else '' }}">Origem & Conversão</a>
 
-@app.get("/")
-def index():
-    # se você já tem index(), mantenha o seu; o importante é passar _ui_globals()
-    return render_template("index.html", **_ui_globals())
+        <a href="{{ url_for('profissao_por_canal') }}"
+           class="{{ 'active' if request.path.startswith('/profissao-por-canal') else '' }}">Profissão x Canal</a>
 
-@app.get("/visao-geral")
-def visao_geral():
-    return render_template("visao_geral.html", **_ui_globals())
+        <a href="{{ url_for('analise_regional') }}"
+           class="{{ 'active' if request.path.startswith('/analise-regional') else '' }}">Análise Regional</a>
 
-@app.get("/origem-conversao")
-def origem_conversao():
-    return render_template("origem_conversao.html", **_ui_globals())
+        <a href="{{ url_for('insights_ia') }}"
+           class="{{ 'active' if request.path.startswith('/insights-ia') else '' }}">Insights IA</a>
 
-@app.get("/profissao-por-canal")
-def profissao_por_canal():
-    return render_template("profissao_por_canal.html", **_ui_globals())
+        <a href="{{ url_for('projecao_resultados') }}"
+           class="{{ 'active' if request.path.startswith('/projecao-resultados') else '' }}">Projeção</a>
 
-@app.get("/analise-regional")
-def analise_regional():
-    return render_template("analise_regional.html", **_ui_globals())
+        <a href="{{ url_for('acompanhamento_vendas') }}"
+           class="{{ 'active' if request.path.startswith('/acompanhamento-vendas') else '' }}">Acompanhamento</a>
+      </nav>
+    </div>
+  </header>
 
-@app.get("/insights-ia")
-def insights_ia():
-    # ⭐ rota que faltava e está quebrando o menu
-    return render_template("insights_ia.html", **_ui_globals())
+  <main>
+    {% block content %}
+      <div class="card"><p>Carregando…</p></div>
+    {% endblock %}
+  </main>
 
-@app.get("/projecao-resultados")
-def projecao_resultados():
-    return render_template("projecao_resultados.html", **_ui_globals())
-
-@app.get("/acompanhamento-vendas")
-def acompanhamento_vendas():
-    return render_template("acompanhamento_vendas.html", **_ui_globals())
+  <footer>
+    <div class="meta">
+      <span>Dados carregados: {{ last_loaded or '—' }}</span>
+      <span>Modo: {{ data_mode or '—' }}</span>
+    </div>
+  </footer>
+</body>
+</html>
