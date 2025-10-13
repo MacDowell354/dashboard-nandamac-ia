@@ -1,4 +1,8 @@
-from flask import render_template, request
+# app.py
+from flask import Flask, render_template, request
+
+# 🔧 crie o app ANTES de usar @app.*
+app = Flask(__name__)
 
 # (opcional) deixa disponível 'current_path' se algum template antigo ainda usar
 @app.context_processor
@@ -55,3 +59,7 @@ def projecao_resultados():
 @app.get("/acompanhamento-vendas")
 def acompanhamento_vendas():
     return render_template("acompanhamento_vendas.html", **_ui_globals())
+
+# ⚠️ Não use app.run() quando rodar com Gunicorn
+# if __name__ == "__main__":
+#     app.run(debug=True)
