@@ -3,8 +3,8 @@
 # Flask + Loader com cache e logs (Render)
 # Dep.: pandas, openpyxl, requests
 # Vars de ambiente:
-#   - GOOGLE_SHEET_CSV_URL (prioridade)
-#   - DATA_XLSX_PATH       (fallback, caminho local ou URL)
+#   - GOOGLE_SHEET_CSV_URL (prioridade, CSV da aba com gid)
+#   - DATA_XLSX_PATH       (fallback, caminho local ou URL xlsx)
 #   - DATA_CACHE_TTL_SECONDS (opcional; padrão 300)
 # -----------------------------------------
 import os, io, time
@@ -27,7 +27,6 @@ def inject_current_path():
         return {"current_path": ""}
 
 def _ui_globals():
-    """Variáveis usadas no rodapé; não quebra se não existirem."""
     last_loaded = globals().get("LAST_LOADED")
     data_mode   = globals().get("DATA_MODE")
     return {"last_loaded": last_loaded, "data_mode": data_mode}
@@ -61,8 +60,9 @@ def _download_to_bytes(url: str, timeout: int = 45, max_attempts: int = 3) -> by
 def _fetch_google_csv(url: str) -> pd.DataFrame:
     _log("Lendo Google Sheet (CSV)")
     text = _download_to_bytes(url).decode("utf-8", errors="replace")
-    df = pd.read_csv(io.StringIO(text))
-    _log(f"CSV lido: linhas={len(df)} colunas={list(df.columns)}")
+    # Importante: manter header=None pra pegar a planilha como grade crua (contém várias "seções")
+    df = pd.read_csv(io.StringIO(text), header=None)
+    _log(f"CSV lido (grade crua): linhas={len(df)} colunas={df.shape[1]}")
     return df
 
 def _fetch_xlsx_from_url(url: str, cache_name="sheet.xlsx") -> pd.DataFrame:
@@ -71,22 +71,21 @@ def _fetch_xlsx_from_url(url: str, cache_name="sheet.xlsx") -> pd.DataFrame:
     with open(cache_path, "wb") as f:
         f.write(content)
     _log(f"XLSX salvo em cache: {cache_path}")
-    df = pd.read_excel(io.BytesIO(content))
-    _log(f"XLSX lido: linhas={len(df)} colunas={list(df.columns)}")
+    # Como o XLSX traz a aba inteira, também carregamos como grade crua
+    df = pd.read_excel(io.BytesIO(content), header=None)
+    _log(f"XLSX lido (grade crua): linhas={len(df)} colunas={df.shape[1]}")
     return df
 
 def _read_local_xlsx(path: str) -> pd.DataFrame:
     _log(f"Lendo XLSX local: {path}")
-    return pd.read_excel(path)
+    return pd.read_excel(path, header=None)
 
 def _resolve_source() -> Tuple[Optional[pd.DataFrame], str]:
-    # 1) CSV de aba específica (prioritário)
     if GOOGLE_SHEET_CSV_URL:
         try:
             return _fetch_google_csv(GOOGLE_SHEET_CSV_URL), "google-csv"
         except Exception as e:
             _log(f"ERRO CSV: {e}")
-    # 2) XLSX por URL ou local
     if DATA_XLSX_PATH:
         try:
             if DATA_XLSX_PATH.lower().startswith("http"):
@@ -107,10 +106,7 @@ def load_dataframe() -> pd.DataFrame:
         df = pd.DataFrame()
     globals()["LAST_LOADED"] = datetime.utcnow()
     globals()["DATA_MODE"]   = mode
-    if df.empty:
-        _log(f"DataFrame vazio | mode={mode}")
-    else:
-        _log(f"OK | linhas={len(df)} | cols={list(df.columns)[:8]} | mode={mode}")
+    _log(f"Fonte: {mode} | shape={df.shape}")
     return df
 
 def get_data() -> pd.DataFrame:
@@ -127,11 +123,77 @@ def get_data() -> pd.DataFrame:
         _log(f"Usando cache (idade={age}s / TTL={CACHE_TTL_SECONDS}s)")
     return _DF_CACHE["df"]
 
+# ---------- Helpers para "seções" da sua aba ----------
+# A sua aba tem múltiplas tabelas "soltas" na mesma grade. Vamos localizar por marcadores na Coluna A (índice 0).
+
+def _first_eq(series: pd.Series, value: str) -> Optional[int]:
+    mask = series.astype(str).str.strip().str.lower() == value.lower()
+    idx = mask.idxmax() if mask.any() else None
+    return int(idx) if idx is not None else None
+
+def extract_vendas_realizadas(df_raw: pd.DataFrame) -> pd.DataFrame:
+    """Extrai a tabela iniciada por 'vendas_realizadas' (coluna A) até linha 'Total'."""
+    if df_raw.empty: 
+        return pd.DataFrame()
+    start = _first_eq(df_raw[0], "vendas_realizadas")
+    if start is None: 
+        _log("Seção 'vendas_realizadas' não encontrada.")
+        return pd.DataFrame()
+    header_row = start + 1
+    # encontra fim: linha onde Coluna A começa com 'Total' ou vazia depois de dados
+    end = header_row + 1
+    while end < len(df_raw):
+        a = str(df_raw.iloc[end, 0]).strip()
+        if a.lower().startswith("total") or (a == "nan" and str(df_raw.iloc[end,1]).strip() == "nan"):
+            break
+        end += 1
+    sub = df_raw.iloc[header_row:end].reset_index(drop=True)
+    sub.columns = sub.iloc[0].tolist()
+    sub = sub[1:].reset_index(drop=True)
+    # normalizações
+    if "Data" in sub.columns:
+        sub["Data"] = pd.to_datetime(sub["Data"], errors="coerce")
+    for col in ["valor_venda", "valor_liquido"]:
+        if col in sub.columns:
+            sub[col] = (
+                sub[col]
+                .astype(str)
+                .str.replace("R$", "", regex=False)
+                .str.replace(".", "", regex=False)
+                .str.replace(",", ".", regex=False)
+                .str.strip()
+            )
+            sub[col] = pd.to_numeric(sub[col], errors="coerce").fillna(0.0)
+    return sub
+
+def extract_projecao(df_raw: pd.DataFrame) -> pd.DataFrame:
+    """Extrai a tabela iniciada por 'progecao_de_resultados'."""
+    if df_raw.empty:
+        return pd.DataFrame()
+    start = _first_eq(df_raw[0], "progecao_de_resultados")
+    if start is None:
+        _log("Seção 'progecao_de_resultados' não encontrada.")
+        return pd.DataFrame()
+    header_row = start + 1
+    # fim: linha em branco dupla ou fim da planilha
+    end = header_row + 1
+    blank_count = 0
+    while end < len(df_raw):
+        row_is_blank = df_raw.iloc[end].isna().all()
+        blank_count = blank_count + 1 if row_is_blank else 0
+        if blank_count >= 2:
+            break
+        end += 1
+    sub = df_raw.iloc[header_row:end].reset_index(drop=True)
+    sub.columns = sub.iloc[0].tolist()
+    sub = sub[1:].reset_index(drop=True)
+    return sub
+
 # ---------- Rotas ----------
 @app.get("/")
 def index():
-    df = get_data()
-    linhas = len(df) if not df.empty else 0
+    df_raw = get_data()
+    linhas = len(df_raw) if not df_raw.empty else 0
     return render_template("index.html", linhas=linhas, **_ui_globals())
 
 @app.get("/visao-geral")
@@ -156,37 +218,43 @@ def insights_ia():
 
 @app.get("/projecao-resultados")
 def projecao_resultados():
-    return render_template("projecao_resultados.html", **_ui_globals())
+    df_raw = get_data()
+    proj = extract_projecao(df_raw)
+    has_data = not proj.empty
+    # montar uma lista simples para a tabela no template
+    table = proj.to_dict(orient="records") if has_data else []
+    return render_template("projecao_resultados.html",
+                           has_data=has_data, table=table, **_ui_globals())
 
 @app.get("/acompanhamento-vendas")
 def acompanhamento_vendas():
-    df = get_data()
-    if df.empty:
+    df_raw = get_data()
+    vendas = extract_vendas_realizadas(df_raw)
+
+    if vendas.empty:
         return render_template("acompanhamento_vendas.html",
                                has_data=False, kpis={}, series=[], table=[],
                                **_ui_globals())
 
-    cols = {c.lower(): c for c in df.columns}
-    c_data  = cols.get("data")  or cols.get("dt") or cols.get("date")
-    c_valor = cols.get("valor") or cols.get("venda") or cols.get("sales") or cols.get("value")
+    # KPIs
+    total_qtd = len(vendas)
+    soma_liquido = float(vendas.get("valor_liquido", pd.Series(dtype=float)).sum())
+    kpis = {"qtd": total_qtd, "liquido": soma_liquido}
 
-    total_linhas = len(df)
-    soma_valor = float(df[c_valor].sum()) if (c_valor and c_valor in df.columns) else 0.0
-    kpis = {"linhas": total_linhas, "soma_valor": soma_valor}
-
+    # Série por dia (valor_liquido)
     series = []
-    if c_data and c_valor and c_data in df.columns and c_valor in df.columns:
-        tmp = df[[c_data, c_valor]].copy()
-        tmp[c_data] = pd.to_datetime(tmp[c_data], errors="coerce")
-        tmp = tmp.dropna(subset=[c_data]).groupby(tmp[c_data].dt.date, as_index=False)[c_valor].sum()
-        series = [{"x": str(d), "y": float(v)} for d, v in zip(tmp[c_data], tmp[c_valor])]
+    if "Data" in vendas.columns and "valor_liquido" in vendas.columns:
+        tmp = vendas[["Data", "valor_liquido"]].dropna()
+        tmp = tmp.groupby(tmp["Data"].dt.date, as_index=False)["valor_liquido"].sum()
+        series = [{"x": str(d), "y": float(v)} for d, v in zip(tmp["Data"], tmp["valor_liquido"])]
 
-    table = df.head(50).to_dict(orient="records")
+    # Amostra de 50 linhas
+    table = vendas.head(50).to_dict(orient="records")
 
     return render_template("acompanhamento_vendas.html",
-                           has_data=(len(table) > 0 or len(series) > 0),
-                           kpis=kpis, series=series, table=table, **_ui_globals())
+                           has_data=True, kpis=kpis, series=series, table=table,
+                           **_ui_globals())
 
-# (não use app.run com gunicorn)
+# (não usar app.run com gunicorn)
 # if __name__ == "__main__":
 #     app.run(debug=True)
