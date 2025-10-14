@@ -12,30 +12,23 @@
     body { margin: 0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--fg); }
     .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
     header { padding: 20px 0 10px; }
-    h1 { margin: 0; font-weight: 700; letter-spacing:.3px; }
     nav { display:flex; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
     nav a { text-decoration:none; color: var(--fg); padding: 8px 14px; border-radius: 10px; background: transparent; transition: .2s; }
     nav a:hover { background: #1d2240; }
     nav a.active { background: #2a315f; font-weight: 600; }
     .card { background: var(--card); border-radius: 14px; padding: 20px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
-    .muted { color: var(--muted); }
-    footer { opacity:.9; font-size: 13px; padding: 24px 0 40px; }
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .kpi { background: var(--card); padding: 18px; border-radius: 14px; }
     table { width: 100%; border-collapse: collapse; }
     th, td { padding: 10px 12px; border-bottom: 1px solid #2b3157; text-align: left; }
     th { color: #cbd0ff; }
-    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-    .kpi { background: var(--card); padding: 18px; border-radius: 14px; }
-    .kpi h3 { margin: 0 0 6px; font-size: 14px; color: #cbd0ff; }
-    .kpi strong { font-size: 22px; }
-    @media (max-width: 900px) { .kpis { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 560px) { .kpis { grid-template-columns: 1fr; } }
   </style>
   {% block head_extra %}{% endblock %}
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>Dashboard IA — CHT22 <span class="muted" style="font-size:14px;">(Fonte: planilha + Flask)</span></h1>
+      <h1>Dashboard IA — CHT22 <span style="color:#a0a3b1;font-size:14px;">(Fonte: planilha + Flask)</span></h1>
       <nav>
         {% set p = current_path or '' %}
         <a href="/" class="{{ 'active' if p == '/' else '' }}">Início</a>
@@ -54,12 +47,10 @@
       {% block content %}{% endblock %}
     </main>
 
-    <footer class="muted">
-      Dados carregados: {{ last_loaded or "—" }} &nbsp;—&nbsp;
-      Modo: {{ data_mode or "—" }}
+    <footer style="color:#a0a3b1;margin-top:16px">
+      Dados carregados: {{ last_loaded or "—" }} — Modo: {{ data_mode or "—" }}
     </footer>
   </div>
-
   {% block body_extra %}{% endblock %}
 </body>
 </html>
