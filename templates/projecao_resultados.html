@@ -1,5 +1,36 @@
 {% extends "base.html" %}
 {% block title %}Projeção de Resultados — Dashboard IA{% endblock %}
 {% block content %}
-  <div class="card"><h2 style="margin:0">Projeção de Resultados</h2><p class="muted">Em construção.</p></div>
+  <h2>Projeção de Resultados</h2>
+
+  {% if not has_data %}
+    <div class="card">
+      <p>Não encontrei a seção <code>progecao_de_resultados</code> na planilha.</p>
+    </div>
+  {% else %}
+    <div class="card">
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            {% if table and table[0] %}
+              <tr>
+                {% for k in table[0].keys() %}
+                  <th>{{ k }}</th>
+                {% endfor %}
+              </tr>
+            {% endif %}
+          </thead>
+          <tbody>
+            {% for row in table %}
+              <tr>
+                {% for v in row.values() %}
+                  <td>{{ v }}</td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
 {% endblock %}
