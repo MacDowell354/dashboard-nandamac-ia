@@ -1,11 +1,12 @@
 # app.py
 # -----------------------------------------
 # Flask + Loader com cache e logs (Render)
-# Dep.: pandas, openpyxl, requests
+# Dep.: Flask, gunicorn, pandas, numpy<2.1, requests, openpyxl
 # Vars de ambiente:
-#   - GOOGLE_SHEET_CSV_URL (prioridade, CSV da aba com gid)
-#   - DATA_XLSX_PATH       (fallback, caminho local ou URL xlsx)
+#   - GOOGLE_SHEET_CSV_URL  (prioridade; CSV de uma aba específica: .../export?format=csv&gid=123)
+#   - DATA_XLSX_PATH        (fallback; caminho local OU .../export?format=xlsx)
 #   - DATA_CACHE_TTL_SECONDS (opcional; padrão 300)
+# Start no Render: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2
 # -----------------------------------------
 import os, io, time
 from datetime import datetime, timedelta
@@ -18,7 +19,7 @@ from flask import Flask, render_template, request
 # ---------- Flask ----------
 app = Flask(__name__)
 
-# === filtros Jinja para formatação ===
+# ---------- Filtros Jinja (formatação) ----------
 @app.template_filter('dash')
 def dash(value):
     """Mostra '—' para vazio/NaN; caso contrário, devolve string."""
@@ -52,7 +53,7 @@ def br_money(value):
     except Exception:
         return dash(value)
 
-# ---------- Contexto (usado para ativar aba do menu, etc.) ----------
+# ---------- Contexto (ativa aba do menu, rodapé) ----------
 @app.context_processor
 def inject_current_path():
     try:
@@ -94,7 +95,7 @@ def _download_to_bytes(url: str, timeout: int = 45, max_attempts: int = 3) -> by
 def _fetch_google_csv(url: str) -> pd.DataFrame:
     _log("Lendo Google Sheet (CSV)")
     text = _download_to_bytes(url).decode("utf-8", errors="replace")
-    # carrega como grade crua (a aba tem múltiplas seções)
+    # grade crua (a aba tem várias seções)
     df = pd.read_csv(io.StringIO(text), header=None)
     _log(f"CSV lido (grade crua): linhas={len(df)} colunas={df.shape[1]}")
     return df
@@ -105,7 +106,7 @@ def _fetch_xlsx_from_url(url: str, cache_name="sheet.xlsx") -> pd.DataFrame:
     with open(cache_path, "wb") as f:
         f.write(content)
     _log(f"XLSX salvo em cache: {cache_path}")
-    df = pd.read_excel(io.BytesIO(content), header=None)  # grade crua
+    df = pd.read_excel(io.BytesIO(content), header=None)
     _log(f"XLSX lido (grade crua): linhas={len(df)} colunas={df.shape[1]}")
     return df
 
@@ -156,38 +157,36 @@ def get_data() -> pd.DataFrame:
         _log(f"Usando cache (idade={age}s / TTL={CACHE_TTL_SECONDS}s)")
     return _DF_CACHE["df"]
 
-# ---------- Helpers para "seções" da aba ----------
+# ---------- Helpers para localizar seções pela Coluna A ----------
 def _first_eq(series: pd.Series, value: str) -> Optional[int]:
     mask = series.astype(str).str.strip().str.lower() == value.lower()
     idx = mask.idxmax() if mask.any() else None
     return int(idx) if idx is not None else None
 
 def extract_vendas_realizadas(df_raw: pd.DataFrame) -> pd.DataFrame:
-    """Extrai a tabela iniciada por 'vendas_realizadas' (coluna A) até linha 'Total'."""
-    if df_raw.empty: 
+    """Seção 'vendas_realizadas' até a linha 'Total'."""
+    if df_raw.empty:
         return pd.DataFrame()
     start = _first_eq(df_raw[0], "vendas_realizadas")
-    if start is None: 
+    if start is None:
         _log("Seção 'vendas_realizadas' não encontrada.")
         return pd.DataFrame()
     header_row = start + 1
     end = header_row + 1
     while end < len(df_raw):
         a = str(df_raw.iloc[end, 0]).strip()
-        if a.lower().startswith("total") or (a == "nan" and str(df_raw.iloc[end,1]).strip() == "nan"):
+        if a.lower().startswith("total") or (a == "nan" and str(df_raw.iloc[end, 1]).strip() == "nan"):
             break
         end += 1
     sub = df_raw.iloc[header_row:end].reset_index(drop=True)
     sub.columns = sub.iloc[0].tolist()
     sub = sub[1:].reset_index(drop=True)
-    # normalizações
     if "Data" in sub.columns:
         sub["Data"] = pd.to_datetime(sub["Data"], errors="coerce")
     for col in ["valor_venda", "valor_liquido"]:
         if col in sub.columns:
             sub[col] = (
-                sub[col]
-                .astype(str)
+                sub[col].astype(str)
                 .str.replace("R$", "", regex=False)
                 .str.replace(".", "", regex=False)
                 .str.replace(",", ".", regex=False)
@@ -197,14 +196,18 @@ def extract_vendas_realizadas(df_raw: pd.DataFrame) -> pd.DataFrame:
     return sub
 
 def extract_projecao(df_raw: pd.DataFrame) -> pd.DataFrame:
-    """Extrai a tabela iniciada por 'progecao_de_resultados' e evita NaN."""
+    """Extrai a seção 'progecao_de_resultados' como tabela limpa."""
     if df_raw.empty:
         return pd.DataFrame()
+
     start = _first_eq(df_raw[0], "progecao_de_resultados")
     if start is None:
         _log("Seção 'progecao_de_resultados' não encontrada.")
         return pd.DataFrame()
+
     header_row = start + 1
+
+    # avança até 2 linhas totalmente vazias (fim da seção)
     end = header_row + 1
     blank_count = 0
     while end < len(df_raw):
@@ -213,12 +216,39 @@ def extract_projecao(df_raw: pd.DataFrame) -> pd.DataFrame:
         if blank_count >= 2:
             break
         end += 1
+
     sub = df_raw.iloc[header_row:end].reset_index(drop=True)
+
+    # primeira linha como cabeçalho
     sub.columns = sub.iloc[0].tolist()
     sub = sub[1:].reset_index(drop=True)
-    sub.columns = [("col_" + str(i) if (c is None or str(c) == "nan" or str(c).strip() == "")
-                    else str(c)) for i, c in enumerate(sub.columns)]
+
+    # normaliza header vazio
+    def _norm_header(i, c):
+        if c is None:
+            return f"col_{i}"
+        s = str(c).strip()
+        return f"col_{i}" if s == "" or s.lower() == "nan" else s
+
+    sub.columns = [_norm_header(i, c) for i, c in enumerate(sub.columns)]
+
+    # remove linhas totalmente vazias
+    sub = sub.dropna(how="all")
+    # preenche vazios com "" para o HTML não mostrar "nan"
     sub = sub.fillna("")
+
+    # remove colunas 100% vazias (tudo "", NaN)
+    empty_cols = [c for c in sub.columns if sub[c].astype(str).str.strip().eq("").all()]
+    if empty_cols:
+        sub = sub.drop(columns=empty_cols)
+
+    # mantém só as colunas relevantes, na ordem desejada, se existirem
+    wanted = ["Métrica", "performance_real", "projecao_lancamento", "potencial_otimista"]
+    lower_map = {str(c).casefold(): c for c in sub.columns}
+    sel = [lower_map.get(k.casefold()) for k in wanted if lower_map.get(k.casefold())]
+    if sel:
+        sub = sub[sel]
+
     return sub
 
 # ---------- Rotas ----------
@@ -278,7 +308,7 @@ def acompanhamento_vendas():
                            has_data=True, kpis=kpis, series=series, table=table,
                            **_ui_globals())
 
-# rota de debug (opcional)
+# Rota de debug (grade crua das primeiras linhas)
 @app.get("/debug")
 def debug_grid():
     df_raw = get_data()
