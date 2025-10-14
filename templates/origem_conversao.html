@@ -1,5 +1,39 @@
 {% extends "base.html" %}
 {% block title %}Origem & Conversão — Dashboard IA{% endblock %}
+{% block head_extra %}<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>{% endblock %}
 {% block content %}
-  <div class="card"><h2 style="margin:0">Origem & Conversão</h2><p class="muted">Em construção.</p></div>
+  <h2>Origem & Conversão</h2>
+
+  {% if not has_data %}
+    <div class="card"><p>Sem dados consolidados por canal (ver bloco “PROFISSOES” na planilha).</p></div>
+  {% else %}
+    <div class="card" style="margin-bottom:16px;">
+      <canvas id="barCanais"></canvas>
+    </div>
+    <div class="card">
+      <div style="overflow-x:auto;">
+        <table>
+          <thead><tr><th>Canal</th><th>Quantidade</th></tr></thead>
+          <tbody>
+            {% for c in canais %}
+              <tr><td>{{ c.canal }}</td><td>{{ c.qtde|dash }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+{% block body_extra %}
+{% if has_data %}
+<script>
+const data = {{ canais|tojson }};
+const ctx = document.getElementById('barCanais').getContext('2d');
+new Chart(ctx, {
+  type: 'bar',
+  data: { labels: data.map(d=>d.canal), datasets: [{ label:'Quantidade', data: data.map(d=>d.qtde) }] },
+  options: { responsive:true }
+});
+</script>
+{% endif %}
 {% endblock %}
