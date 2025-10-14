@@ -1,5 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Insights IA — Dashboard IA{% endblock %}
 {% block content %}
-  <div class="card"><h2 style="margin:0">Insights IA</h2><p class="muted">Em construção.</p></div>
+  <h2>Insights IA</h2>
+  {% if insights and insights|length > 0 %}
+    <div class="card">
+      <ul>
+        {% for i in insights %}
+          <li>{{ i }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% else %}
+    <div class="card"><p>Sem insights suficientes por enquanto — alimente as seções de Vendas/Profissões/UF.</p></div>
+  {% endif %}
 {% endblock %}
