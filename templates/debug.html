@@ -5,16 +5,10 @@
     <h3 style="margin-top:0">Primeiras linhas da aba (grade crua)</h3>
     <div style="overflow-x:auto;">
       <table>
-        <thead>
-          <tr>
-            {% for c in cols %}<th>{{ c }}</th>{% endfor %}
-          </tr>
-        </thead>
+        <thead><tr>{% for c in cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
         <tbody>
           {% for r in rows %}
-            <tr>
-              {% for c in cols %}<td>{{ r.get(c, '')|dash }}</td>{% endfor %}
-            </tr>
+            <tr>{% for c in cols %}<td>{{ r.get(c, '')|dash }}</td>{% endfor %}</tr>
           {% endfor %}
         </tbody>
       </table>
