@@ -24,7 +24,6 @@
             {% for row in table %}
               <tr>
                 {% for k, v in row.items() %}
-                  {# se a célula parece valor monetário, tenta br_money; senão, dash #}
                   {% if v is string and ('R$' in v or ',' in v) %}
                     <td>{{ v|br_money }}</td>
                   {% else %}
