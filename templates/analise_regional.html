@@ -1,5 +1,78 @@
 {% extends "base.html" %}
 {% block title %}Análise Regional — Dashboard IA{% endblock %}
+{% block head_extra %}<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>{% endblock %}
 {% block content %}
-  <div class="card"><h2 style="margin:0">Análise Regional</h2><p class="muted">Em construção.</p></div>
+  <h2>Análise Regional</h2>
+
+  {% if not has_uf and not has_reg %}
+    <div class="card"><p>Não encontrei as seções “Estado x Profissão” ou “Região por Profissão”.</p></div>
+  {% endif %}
+
+  {% if has_uf %}
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-top:0">Top Estados (soma de todas as profissões)</h3>
+      <canvas id="chartUF"></canvas>
+    </div>
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-top:0">Tabela — Estado x Profissão</h3>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            {% if uf_table and uf_table[0] %}
+              <tr>{% for k in uf_table[0].keys() %}<th>{{ k }}</th>{% endfor %}</tr>
+            {% endif %}
+          </thead>
+          <tbody>
+            {% for row in uf_table %}
+              <tr>{% for v in row.values() %}<td>{{ v|dash }}</td>{% endfor %}</tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if has_reg %}
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-top:0">Regiões (soma de todas as profissões)</h3>
+      <canvas id="chartReg"></canvas>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Tabela — Região por Profissão</h3>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            {% if reg_table and reg_table[0] %}
+              <tr>{% for k in reg_table[0].keys() %}<th>{{ k }}</th>{% endfor %}</tr>
+            {% endif %}
+          </thead>
+          <tbody>
+            {% for row in reg_table %}
+              <tr>{% for v in row.values() %}<td>{{ v|dash }}</td>{% endfor %}</tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+{% block body_extra %}
+<script>
+const serieUF  = {{ serie_uf|tojson }};
+const serieReg = {{ serie_reg|tojson }};
+if (serieUF.length){
+  new Chart(document.getElementById('chartUF').getContext('2d'), {
+    type: 'bar',
+    data: { labels: serieUF.map(p=>p.x), datasets: [{ label: 'Total', data: serieUF.map(p=>p.y) }] },
+    options: { responsive:true, scales:{ x:{ ticks:{ autoSkip:true, maxTicksLimit:12 } } } }
+  });
+}
+if (serieReg.length){
+  new Chart(document.getElementById('chartReg').getContext('2d'), {
+    type: 'bar',
+    data: { labels: serieReg.map(p=>p.x), datasets: [{ label: 'Total', data: serieReg.map(p=>p.y) }] },
+    options: { responsive:true }
+  });
+}
+</script>
 {% endblock %}
