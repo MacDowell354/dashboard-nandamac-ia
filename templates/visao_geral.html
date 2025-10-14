@@ -1,13 +1,5 @@
 {% extends "base.html" %}
+{% block title %}Visão Geral — Dashboard IA{% endblock %}
 {% block content %}
-<h1>Visão Geral</h1>
-
-{% if tables %}
-  {% for name, table in tables %}
-    <h3>{{ name }}</h3>
-    {% include "widgets/table.html" %}
-  {% endfor %}
-{% else %}
-  <p>Sem dados para exibir.</p>
-{% endif %}
+  <div class="card"><h2 style="margin:0">Visão Geral</h2><p class="muted">Em construção.</p></div>
 {% endblock %}
