@@ -23,8 +23,13 @@
           <tbody>
             {% for row in table %}
               <tr>
-                {% for v in row.values() %}
-                  <td>{{ v }}</td>
+                {% for k, v in row.items() %}
+                  {# se a célula parece valor monetário, tenta br_money; senão, dash #}
+                  {% if v is string and ('R$' in v or ',' in v) %}
+                    <td>{{ v|br_money }}</td>
+                  {% else %}
+                    <td>{{ v|dash }}</td>
+                  {% endif %}
                 {% endfor %}
               </tr>
             {% endfor %}
