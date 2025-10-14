@@ -14,7 +14,7 @@
           <thead>
             {% if table and table[0] %}
               <tr>
-                {% for k in table[0].keys() %}
+                {% for k in table[0].keys() if not k.startswith('col_') %}
                   <th>{{ k }}</th>
                 {% endfor %}
               </tr>
@@ -23,7 +23,7 @@
           <tbody>
             {% for row in table %}
               <tr>
-                {% for k, v in row.items() %}
+                {% for k, v in row.items() if not k.startswith('col_') %}
                   {% if v is string and ('R$' in v or ',' in v) %}
                     <td>{{ v|br_money }}</td>
                   {% else %}
