@@ -2,11 +2,8 @@
 {% block title %}Projeção de Resultados — Dashboard IA{% endblock %}
 {% block content %}
   <h2>Projeção de Resultados</h2>
-
   {% if not has_data %}
-    <div class="card">
-      <p>Não encontrei a seção <code>progecao_de_resultados</code> na planilha.</p>
-    </div>
+    <div class="card"><p>Não encontrei a seção <code>progecao_de_resultados</code> na planilha.</p></div>
   {% else %}
     <div class="card">
       <div style="overflow-x:auto;">
