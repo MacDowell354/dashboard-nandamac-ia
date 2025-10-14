@@ -1,5 +1,26 @@
 {% extends "base.html" %}
 {% block title %}Visão Geral — Dashboard IA{% endblock %}
 {% block content %}
-  <div class="card"><h2 style="margin:0">Visão Geral</h2><p class="muted">Em construção.</p></div>
+  <h2>Visão Geral</h2>
+  <div class="kpis" style="margin: 8px 0 18px;">
+    <div class="kpi">
+      <h3>Vendas registradas</h3>
+      <strong>{{ total_vendas }}</strong>
+    </div>
+    <div class="kpi">
+      <h3>Faturamento líquido</h3>
+      <strong>{{ total_liquido|br_money }}</strong>
+    </div>
+    <div class="kpi">
+      <h3>Canal dominante</h3>
+      <strong>{{ top_canal or "—" }}</strong>
+    </div>
+    <div class="kpi">
+      <h3>Volume do canal dominante</h3>
+      <strong>{{ top_val|dash }}</strong>
+    </div>
+  </div>
+  <div class="card">
+    <p class="muted">KPIs calculados a partir de “Vendas Realizadas” e “Profissões × Canal”.</p>
+  </div>
 {% endblock %}
