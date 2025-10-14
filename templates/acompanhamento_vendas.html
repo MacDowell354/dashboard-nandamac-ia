@@ -1,34 +1,91 @@
 {% extends "base.html" %}
+{% block title %}Acompanhamento de Vendas — Dashboard IA{% endblock %}
+
+{% block head_extra %}
+  <!-- Chart.js para a série temporal -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
 
 {% block content %}
   <h2>Acompanhamento de Vendas</h2>
 
-  {# 
-    'linhas' chega do app.py. Se houver dados (records de um DataFrame),
-    mostramos uma tabelinha. Caso contrário, exibimos a mensagem padrão.
-  #}
-  {% if linhas %}
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            {% for col in linhas[0].keys() %}
-              <th>{{ col }}</th>
-            {% endfor %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in linhas %}
-            <tr>
-              {% for v in row.values() %}
-                <td>{{ v }}</td>
-              {% endfor %}
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+  {% if not has_data %}
+    <div class="card">
+      <p>Sem dados para exibir.</p>
+      <p class="muted">Confira as variáveis <code>GOOGLE_SHEET_CSV_URL</code> ou <code>DATA_XLSX_PATH</code>.</p>
     </div>
   {% else %}
-    <p class="muted">Sem dados para exibir.</p>
+    <section class="kpis" style="margin: 14px 0 20px;">
+      <div class="kpi">
+        <h3>Total de linhas</h3>
+        <strong>{{ kpis.linhas }}</strong>
+      </div>
+      <div class="kpi">
+        <h3>Soma de vendas</h3>
+        <strong>{{ kpis.soma_valor }}</strong>
+      </div>
+      <div class="kpi">
+        <h3>Última atualização</h3>
+        <strong>{{ last_loaded or "—" }}</strong>
+      </div>
+      <div class="kpi">
+        <h3>Modo</h3>
+        <strong>{{ data_mode or "—" }}</strong>
+      </div>
+    </section>
+
+    <div class="card" style="margin-bottom:20px;">
+      <h3 style="margin-top:0">Vendas por dia</h3>
+      <canvas id="salesChart"></canvas>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Amostra de registros</h3>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            {% if table and table[0] %}
+              <tr>
+                {% for k in table[0].keys() %}
+                  <th>{{ k }}</th>
+                {% endfor %}
+              </tr>
+            {% endif %}
+          </thead>
+          <tbody>
+            {% for row in table %}
+              <tr>
+                {% for v in row.values() %}
+                  <td>{{ v }}</td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
   {% endif %}
+{% endblock %}
+
+{% block body_extra %}
+{% if has_data %}
+<script>
+  const series = {{ series|tojson }};
+  const labels = series.map(p => p.x);
+  const values = series.map(p => p.y);
+
+  const ctx = document.getElementById('salesChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{ label: 'Vendas', data: values, tension: 0.25 }]
+    },
+    options: {
+      responsive: true,
+      scales: { x: { ticks: { autoSkip: true, maxTicksLimit: 8 } } }
+    }
+  });
+</script>
+{% endif %}
 {% endblock %}
