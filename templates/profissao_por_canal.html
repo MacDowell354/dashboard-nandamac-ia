@@ -1,5 +1,64 @@
 {% extends "base.html" %}
 {% block title %}Profissão x Canal — Dashboard IA{% endblock %}
+{% block head_extra %}<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>{% endblock %}
 {% block content %}
-  <div class="card"><h2 style="margin:0">Profissão x Canal</h2><p class="muted">Em construção.</p></div>
+  <h2>Profissão x Canal</h2>
+
+  {% if not has_data %}
+    <div class="card"><p>Bloco “PROFISSOES” não encontrado na planilha.</p></div>
+  {% else %}
+
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-top:0">Top canais (soma por profissão)</h3>
+      <div style="display:grid; gap:18px;">
+        {% for serie in series %}
+          <div>
+            <h4 style="margin:0 0 6px 0">{{ serie.canal }}</h4>
+            <canvas id="chart_{{ loop.index0 }}"></canvas>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            {% if table and table[0] %}
+              <tr>
+                {% for k in table[0].keys() %}
+                  <th>{{ k }}</th>
+                {% endfor %}
+              </tr>
+            {% endif %}
+          </thead>
+          <tbody>
+            {% for row in table %}
+              <tr>
+                {% for v in row.values() %}
+                  <td>{{ v|dash }}</td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  {% endif %}
+{% endblock %}
+{% block body_extra %}
+{% if has_data %}
+<script>
+const series = {{ series|tojson }};
+series.forEach((s, idx) => {
+  const ctx = document.getElementById('chart_' + idx).getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: { labels: s.data.map(p=>p.x), datasets: [{ label: s.canal, data: s.data.map(p=>p.y) }] },
+    options: { responsive: true, scales: { x: { ticks: { autoSkip: true, maxTicksLimit: 8 } } } }
+  });
+});
+</script>
+{% endif %}
 {% endblock %}
