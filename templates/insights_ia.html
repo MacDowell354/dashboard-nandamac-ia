@@ -1,11 +1,5 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
+{% block title %}Insights IA — Dashboard IA{% endblock %}
 {% block content %}
-  <h2>Insights (IA)</h2>
-  <ul class="insights">
-    {% for line in insights %}
-      <li>{{ line }}</li>
-    {% else %}
-      <li class="muted">Nenhum insight disponível.</li>
-    {% endfor %}
-  </ul>
+  <div class="card"><h2 style="margin:0">Insights IA</h2><p class="muted">Em construção.</p></div>
 {% endblock %}
