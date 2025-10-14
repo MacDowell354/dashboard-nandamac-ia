@@ -1,22 +1,9 @@
 {% extends "base.html" %}
+{% block title %}Início — Dashboard IA{% endblock %}
 {% block content %}
-<h1>Início</h1>
-
-{% if data_mode == 'blocks' %}
-  <p>Modo de dados: <strong>blocks</strong></p>
-  <p><small>Carregado: {{ last_loaded }}</small></p>
-  {% if blocks_info and blocks_info|length > 0 %}
-    <h3>Blocos encontrados</h3>
-    <ul>
-      {% for name, nrows in blocks_info %}
-        <li>{{ name }} — {{ nrows }} linhas</li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <p>Nenhum bloco detectado.</p>
-  {% endif %}
-{% else %}
-  <p>Modo de dados: <strong>long</strong></p>
-  <p><small>Carregado: {{ last_loaded }}</small></p>
-{% endif %}
+  <div class="card">
+    <h2 style="margin-top:0">Bem-vindo 👋</h2>
+    <p>Este painel está rodando no Render com Flask + Gunicorn.</p>
+    <p class="muted">Linhas carregadas do dataset: <strong>{{ linhas }}</strong></p>
+  </div>
 {% endblock %}
