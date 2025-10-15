@@ -8,30 +8,38 @@
     <div class="card"><p>Sem dados consolidados por canal (ver bloco “PROFISSOES” na planilha).</p></div>
   {% else %}
     <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-top:0">Leads por Canal</h3>
       <canvas id="barCanais"></canvas>
     </div>
+
     <div class="card">
+      <h3 style="margin-top:0">Funil por Canal (aprox.)</h3>
       <div style="overflow-x:auto;">
         <table>
-          <thead><tr><th>Canal</th><th>Quantidade</th></tr></thead>
+          <thead><tr><th>Canal</th><th>Leads</th><th>Vendas (aprox.)</th><th>Conversão</th></tr></thead>
           <tbody>
-            {% for c in canais %}
-              <tr><td>{{ c.canal }}</td><td>{{ c.qtde|dash }}</td></tr>
+            {% for f in funil %}
+              <tr>
+                <td>{{ f.canal }}</td>
+                <td>{{ f.leads|dash }}</td>
+                <td>{{ (f.vendas|round(1)) if f.vendas else 0 }}</td>
+                <td>{{ (f.conv|round(2)) if f.conv else 0 }}%</td>
+              </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
+      <p class="muted" style="margin-top:8px">Obs.: como a planilha de vendas ainda não traz o <em>canal</em> por venda, a distribuição de vendas por canal é proporcional ao volume de leads (método de aproximação). Se você adicionar uma coluna “Canal” em <strong>vendas_realizadas</strong>, eu ajusto pra usar dados reais.</p>
     </div>
   {% endif %}
 {% endblock %}
 {% block body_extra %}
 {% if has_data %}
 <script>
-const data = {{ canais|tojson }};
-const ctx = document.getElementById('barCanais').getContext('2d');
-new Chart(ctx, {
+const canais = {{ canais|tojson }};
+new Chart(document.getElementById('barCanais').getContext('2d'), {
   type: 'bar',
-  data: { labels: data.map(d=>d.canal), datasets: [{ label:'Quantidade', data: data.map(d=>d.qtde) }] },
+  data: { labels: canais.map(d=>d.canal), datasets: [{ label:'Leads', data: canais.map(d=>d.qtde) }] },
   options: { responsive:true }
 });
 </script>
