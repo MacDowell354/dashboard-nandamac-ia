@@ -430,8 +430,34 @@ def visao_geral():
     df_raw = get_data()
     vendas = extract_vendas_realizadas(df_raw)
     profcan= extract_profissoes_por_canal(df_raw)
+    kv     = extract_kv_metrics(df_raw)
 
+    # KPIs do bloco CAMPO (se existirem); senão, calculamos fallback
+    total_leads  = kv.get("total_leads") or kv.get("total_de_leads") or None
+    cpl_medio    = kv.get("cpl_medio") or kv.get("cpl_media") or None
+    orcamento    = kv.get("investimento_total") or kv.get("orcamento_total") or None
+    roas_geral   = kv.get("roas_geral") or None
+
+    # Fallbacks por cálculo
+    total_vendas = 0 if vendas.empty else len(vendas)
     total_liquido = float(vendas["valor_liquido"].sum()) if (not vendas.empty and "valor_liquido" in vendas.columns) else 0.0
+    if total_leads is None and not profcan.empty:
+        # soma tudo nos canais (aproximação)
+        num_cols = [c for c in profcan.columns if c!="Profissao" and pd.api.types.is_numeric_dtype(profcan[c])]
+        if num_cols:
+            total_leads = float(profcan[num_cols].sum().sum())
+    if cpl_medio is None and orcamento and total_leads:
+        try:
+            cpl_medio = float(orcamento) / float(total_leads) if float(total_leads) > 0 else None
+        except Exception:
+            pass
+    if roas_geral is None and orcamento and total_liquido:
+        try:
+            roas_geral = float(total_liquido) / float(orcamento) if float(orcamento) > 0 else None
+        except Exception:
+            pass
+
+    # Canal dominante pelo bloco de Profissões
     top_canal, top_val = None, 0
     if not profcan.empty:
         num_cols = [c for c in profcan.columns if c!="Profissao" and pd.api.types.is_numeric_dtype(profcan[c])]
@@ -440,12 +466,25 @@ def visao_geral():
             if len(soma):
                 top_canal, top_val = soma.index[0], float(soma.iloc[0])
 
+    # Conversão global (aproximação) = vendas / leads
+    conv_global = None
+    if total_leads and float(total_leads) > 0:
+        conv_global = (total_vendas / float(total_leads)) * 100.0
+
     return render_template("visao_geral.html",
-                           has_vendas=not vendas.empty,
-                           total_vendas=0 if vendas.empty else len(vendas),
-                           total_liquido=total_liquido,
-                           top_canal=top_canal, top_val=top_val,
-                           **_ui_globals())
+        # KPIs principais
+        total_leads=total_leads,
+        cpl_medio=cpl_medio,
+        orcamento=orcamento,
+        roas_geral=roas_geral,
+        total_vendas=total_vendas,
+        total_liquido=total_liquido,
+        conv_global=conv_global,
+        # Destaques
+        top_canal=top_canal, top_val=top_val,
+        **_ui_globals()
+    )
+
 
 @app.get("/origem-conversao")
 def origem_conversao():
