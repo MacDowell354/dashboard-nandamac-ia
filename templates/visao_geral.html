@@ -2,25 +2,22 @@
 {% block title %}Visão Geral — Dashboard IA{% endblock %}
 {% block content %}
   <h2>Visão Geral</h2>
+
   <div class="kpis" style="margin: 8px 0 18px;">
-    <div class="kpi">
-      <h3>Vendas registradas</h3>
-      <strong>{{ total_vendas }}</strong>
-    </div>
-    <div class="kpi">
-      <h3>Faturamento líquido</h3>
-      <strong>{{ total_liquido|br_money }}</strong>
-    </div>
-    <div class="kpi">
-      <h3>Canal dominante</h3>
-      <strong>{{ top_canal or "—" }}</strong>
-    </div>
-    <div class="kpi">
-      <h3>Volume do canal dominante</h3>
-      <strong>{{ top_val|dash }}</strong>
-    </div>
+    <div class="kpi"><h3>Total de Leads</h3><strong>{{ total_leads|dash }}</strong></div>
+    <div class="kpi"><h3>CPL Médio</h3><strong>{{ cpl_medio|br_money }}</strong></div>
+    <div class="kpi"><h3>Orçamento Investido</h3><strong>{{ orcamento|br_money }}</strong></div>
+    <div class="kpi"><h3>ROAS Geral</h3><strong>{{ roas_geral|dash }}</strong></div>
   </div>
+
+  <div class="kpis" style="margin: 8px 0 18px;">
+    <div class="kpi"><h3>Vendas (qtd)</h3><strong>{{ total_vendas }}</strong></div>
+    <div class="kpi"><h3>Faturamento Líquido</h3><strong>{{ total_liquido|br_money }}</strong></div>
+    <div class="kpi"><h3>Conversão Global</h3><strong>{{ (conv_global|round(2)) if conv_global else '—' }}%</strong></div>
+    <div class="kpi"><h3>Canal Dominante</h3><strong>{{ top_canal or '—' }}</strong></div>
+  </div>
+
   <div class="card">
-    <p class="muted">KPIs calculados a partir de “Vendas Realizadas” e “Profissões × Canal”.</p>
+    <p class="muted">Estes KPIs combinam o bloco “CAMPO | VALOR ATUAL” com cálculos sobre Vendas e Profissões×Canal. Onde a planilha não fornece um valor direto, fazemos um <em>fallback</em> por cálculo (ex.: <strong>ROAS</strong> = Faturamento/Investimento; <strong>CPL</strong> = Investimento/Leads).</p>
   </div>
 {% endblock %}
