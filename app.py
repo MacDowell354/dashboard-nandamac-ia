@@ -569,3 +569,84 @@ def debug_grid():
     sample = df_raw.head(30).fillna("").astype(str).to_dict(orient="records")
     cols = list(range(df_raw.shape[1]))
     return render_template("debug.html", cols=cols, rows=sample, **_ui_globals())
+
+# ---------- Normalizadores numéricos ----------
+def _to_number_pt(s: str) -> float | None:
+    """Converte 'R$ 140.000,00', '3.456,7%', '9.000' -> float. Vazio -> None."""
+    if s is None:
+        return None
+    txt = str(s).strip()
+    if txt == "" or txt.lower() == "nan":
+        return None
+    txt = txt.replace("R$", "").replace("%", "").replace(".", "").replace(",", ".").strip()
+    try:
+        return float(txt)
+    except Exception:
+        return None
+
+# ---------- Extração do bloco de métricas (CAMPO | DESCRIÇÃO | VALOR ATUAL ...) ----------
+def extract_kv_metrics(df_raw: pd.DataFrame) -> dict:
+    """
+    Lê o bloco superior 'CAMPO | DESCRIÇÃO | VALOR ATUAL ...' até a linha antes de 'PROFISSOES'.
+    Retorna um dicionário {chave: valor_normalizado}, ex.: {'Total_Leads': 9500, 'CPL_Medio': 15.53, ...}
+    """
+    if df_raw.empty:
+        return {}
+
+    # localizar cabeçalho "CAMPO" na coluna A
+    start = _first_eq(df_raw[0], "CAMPO")
+    if start is None:
+        # tolera 'Campo' sem acento/caso
+        start = _first_match_contains(df_raw[0], "campo")
+    if start is None:
+        _log("Bloco de métricas (CAMPO...) não encontrado.")
+        return {}
+
+    # fim: linha que começa com 'PROFISSOES' ou linha vazia muito espaçada
+    end = start + 1
+    while end < len(df_raw):
+        a = str(df_raw.iloc[end, 0]).strip().lower()
+        if a.startswith("profissoes"):
+            break
+        # Para segurança: se passarmos 200 linhas, paramos.
+        if end - start > 200:
+            break
+        end += 1
+
+    # recorte
+    sub = df_raw.iloc[start:end].reset_index(drop=True)
+    if sub.empty or len(sub) < 2:
+        return {}
+
+    # primeira linha -> cabeçalho
+    sub.columns = sub.iloc[0].tolist()
+    sub = sub[1:].reset_index(drop=True)
+
+    # nomes canônicos para colunas esperadas
+    # coluna "CAMPO" com a chave; coluna "VALOR ATUAL" com o valor
+    # (permite pequenas variações)
+    cols_map = {str(c).strip().lower(): c for c in sub.columns}
+    c_key = cols_map.get("campo") or list(sub.columns)[0]
+    c_val = None
+    for k in ["valor atual", "valor_atual", "valor"]:
+        if k in cols_map:
+            c_val = cols_map[k]
+            break
+    if c_val is None:
+        # fallback para a terceira ou segunda coluna
+        c_val = sub.columns[2] if len(sub.columns) > 2 else (sub.columns[1] if len(sub.columns) > 1 else sub.columns[0])
+
+    metrics = {}
+    for _, row in sub.iterrows():
+        key_raw = str(row.get(c_key, "")).strip()
+        if key_raw == "" or key_raw.lower().startswith("profissoes"):
+            continue
+        val_raw = row.get(c_val, "")
+        val_num = _to_number_pt(val_raw)
+        # normaliza chave sem acento/espaço, mantendo underscores da sua planilha
+        key = _strip_accents_lower(key_raw).replace(" ", "_")
+        # evita linhas explicativas (“Meta ...”, se ficar melhor usar, mantenha)
+        metrics[key] = val_num if val_num is not None else str(val_raw).strip()
+
+    return metrics
+
