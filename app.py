@@ -490,16 +490,40 @@ def visao_geral():
 def origem_conversao():
     df_raw = get_data()
     profcan = extract_profissoes_por_canal(df_raw)
+    vendas  = extract_vendas_realizadas(df_raw)
+
     canais = []
+    funil  = []  # [{canal, leads, vendas, conv%}]
+
     if not profcan.empty:
         num_cols = [c for c in profcan.columns if c!="Profissao" and pd.api.types.is_numeric_dtype(profcan[c])]
         if num_cols:
-            tot = profcan[num_cols].sum()
-            canais = [{"canal": c, "qtde": float(tot[c])} for c in num_cols]
-            canais.sort(key=lambda x: x["qtde"], reverse=True)
+            leads_por_canal = profcan[num_cols].sum()  # soma por coluna
+            # aproximação de vendas por canal:
+            # se a planilha trouxer coluna 'Canal' nas vendas no futuro, trocamos a lógica.
+            # por enquanto, distribuímos vendas proporcionalmente aos leads.
+            total_leads = float(leads_por_canal.sum())
+            total_vendas = 0 if vendas.empty else len(vendas)
+            vendas_por_canal = {}
+            if total_leads > 0 and total_vendas > 0:
+                for canal, qtd in leads_por_canal.items():
+                    vendas_por_canal[canal] = (float(qtd) / total_leads) * total_vendas
+            # monta listas
+            for canal in num_cols:
+                leads = float(leads_por_canal.get(canal, 0.0))
+                vds   = float(vendas_por_canal.get(canal, 0.0)) if vendas_por_canal else 0.0
+                conv  = (vds / leads * 100.0) if leads > 0 else 0.0
+                canais.append({"canal": canal, "qtde": leads})
+                funil.append({"canal": canal, "leads": leads, "vendas": vds, "conv": conv})
+
+    # ordena por leads
+    canais.sort(key=lambda x: x["qtde"], reverse=True)
+    funil.sort(key=lambda x: x["leads"], reverse=True)
+
     return render_template("origem_conversao.html",
-                           canais=canais, has_data=len(canais)>0,
+                           canais=canais, funil=funil, has_data=len(canais)>0,
                            **_ui_globals())
+
 
 @app.get("/profissao-por-canal")
 def profissao_por_canal():
