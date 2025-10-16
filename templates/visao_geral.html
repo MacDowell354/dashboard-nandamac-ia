@@ -1,23 +1,135 @@
 {% extends "base.html" %}
 {% block title %}Visão Geral — Dashboard IA{% endblock %}
+
 {% block content %}
-  <h2>Visão Geral</h2>
+<h2>Visão Geral — CHT22</h2>
+<p class="muted" style="margin-top:-6px">Resumo executivo do lançamento com métricas principais e status.</p>
 
-  <div class="kpis" style="margin: 8px 0 18px;">
-    <div class="kpi"><h3>Total de Leads</h3><strong>{{ total_leads|dash }}</strong></div>
-    <div class="kpi"><h3>CPL Médio</h3><strong>{{ cpl_medio|br_money }}</strong></div>
-    <div class="kpi"><h3>Orçamento Investido</h3><strong>{{ orcamento|br_money }}</strong></div>
-    <div class="kpi"><h3>ROAS Geral</h3><strong>{{ roas_geral|dash }}</strong></div>
+<!-- ===== Cards do topo (Resumo Executivo) ===== -->
+<div class="kpis" style="margin:12px 0 18px;">
+  <div class="kpi">
+    <h3>Lançamento Ativo</h3>
+    <strong>{{ topo.dias or "—" }} DIAS</strong>
+    <div class="muted">Em andamento</div>
   </div>
 
-  <div class="kpis" style="margin: 8px 0 18px;">
-    <div class="kpi"><h3>Vendas (qtd)</h3><strong>{{ total_vendas }}</strong></div>
-    <div class="kpi"><h3>Faturamento Líquido</h3><strong>{{ total_liquido|br_money }}</strong></div>
-    <div class="kpi"><h3>Conversão Global</h3><strong>{{ (conv_global|round(2)) if conv_global else '—' }}%</strong></div>
-    <div class="kpi"><h3>Canal Dominante</h3><strong>{{ top_canal or '—' }}</strong></div>
+  <div class="kpi">
+    <h3>Meta CPL Captação</h3>
+    <strong>
+      {% if topo.delta_cpl is not none %}
+        {{ topo.delta_cpl|round(1) }}%
+      {% else %}—{% endif %}
+    </strong>
+    <div class="muted">{{ br_money(topo.cpl_atual) }} vs {{ br_money(topo.meta_cpl) }}</div>
   </div>
 
-  <div class="card">
-    <p class="muted">Estes KPIs combinam o bloco “CAMPO | VALOR ATUAL” com cálculos sobre Vendas e Profissões×Canal. Onde a planilha não fornece um valor direto, fazemos um <em>fallback</em> por cálculo (ex.: <strong>ROAS</strong> = Faturamento/Investimento; <strong>CPL</strong> = Investimento/Leads).</p>
+  <div class="kpi">
+    <h3>Orçamento Captação</h3>
+    <strong>
+      {% if topo.delta_orc is not none %}
+        {{ topo.delta_orc|round(1) }}%
+      {% else %}—{% endif %}
+    </strong>
+    <div class="muted">{{ br_money(topo.inv_usado) }} / {{ br_money(topo.orc_meta) }}</div>
   </div>
+
+  <div class="kpi">
+    <h3>ROAS Geral</h3>
+    <strong>{{ topo.roas|dash }}</strong>
+    <div class="muted">
+      {% if topo.roas and topo.roas >= 2 %}Acima da meta{% else %}Abaixo/sem meta{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ===== Principais Insights por canal ===== -->
+<h3 style="margin:16px 0 8px;">Principais Insights</h3>
+<div style="display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px;">
+  {% if canais_cards and canais_cards|length > 0 %}
+    {% for c in canais_cards %}
+      <div class="card" style="border-left:6px solid {% if c.tone=='positivo' %}#2ecc71{% elif c.tone=='alerta' %}#ff9800{% else %}#6e8efb{% endif %};">
+        <div style="font-weight:600; margin-bottom:6px">{{ c.title }}</div>
+        <div class="muted">{{ c.body }}</div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="card"><div class="muted">Sem dados suficientes por canal.</div></div>
+    <div class="card" style="opacity:.6"><div class="muted">Preencha no bloco CAMPO as métricas por canal (ex.: Facebook_Leads, Facebook_CPL, Facebook_ROAS...).</div></div>
+    <div class="card" style="opacity:.6"><div class="muted">Assim que houver dados, os insights aparecem aqui automaticamente.</div></div>
+  {% endif %}
+</div>
+
+<!-- ===== KPIs & Premissas ===== -->
+<h3 style="margin:18px 0 8px;">KPIs & Premissas</h3>
+<div class="kpis">
+  {% for k in kpis_cards %}
+    <div class="kpi">
+      <h3>{{ k.titulo }}</h3>
+      {% if k.tipo == 'money' %}
+        <strong>{{ k.valor|br_money }}</strong>
+      {% elif k.tipo == 'percent' %}
+        <strong>{{ (k.valor|round(2)) if k.valor is not none else '—' }}%</strong>
+      {% else %}
+        <strong>{{ k.valor|dash }}</strong>
+      {% endif %}
+      <div class="muted">{{ k.subtitulo }}</div>
+    </div>
+  {% endfor %}
+</div>
+
+<!-- ===== Metas & Semáforos (opcional) ===== -->
+{% if metas and metas|length > 0 %}
+  <div class="card" style="margin-top:16px;">
+    <h3 style="margin:0 0 8px;">Metas & Semáforos</h3>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Métrica</th>
+            <th>Atual</th>
+            <th>Meta</th>
+            <th>Atingimento</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in metas %}
+            <tr>
+              <td>{{ m.nome }}</td>
+              <td>
+                {% if m.nome in ['CPL Médio','Execução do Orçamento'] %}
+                  {{ m.atual|br_money }}
+                {% else %}
+                  {{ m.atual|dash }}
+                {% endif %}
+              </td>
+              <td>
+                {% if m.nome in ['CPL Médio','Execução do Orçamento'] %}
+                  {{ m.meta|br_money }}
+                {% else %}
+                  {{ m.meta|dash }}
+                {% endif %}
+              </td>
+              <td>{{ m.atingimento|round(1) }}%</td>
+              <td>
+                {% if m.status == 'verde' %}🟢{% elif m.status == 'amarelo' %}🟡{% else %}🔴{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="muted" style="margin-top:8px">
+      Regras: CPL (menor melhor), Vendas (maior melhor), Orçamento (evitar extrapolar o planejado).
+    </p>
+  </div>
+{% endif %}
+
+<!-- ===== Rodapé/observações ===== -->
+<div class="card" style="margin-top:16px">
+  <div class="muted">
+    Observação: esta aba é alimentada pelo bloco <em>CAMPO | VALOR ATUAL</em> da planilha.
+    Se algum item ficar “—”, basta preencher a métrica correspondente no Google Sheets (ex.: <code>Meta_CPL</code>, <code>Meta_Orcamento_Trafego</code>, <code>Facebook_ROAS</code> etc.).
+  </div>
+</div>
 {% endblock %}
