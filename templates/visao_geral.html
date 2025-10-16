@@ -20,7 +20,7 @@
         {{ topo.delta_cpl|round(1) }}%
       {% else %}—{% endif %}
     </strong>
-    <div class="muted">{{ br_money(topo.cpl_atual) }} vs {{ br_money(topo.meta_cpl) }}</div>
+    <div class="muted">{{ topo.cpl_atual|br_money }} vs {{ topo.meta_cpl|br_money }}</div>
   </div>
 
   <div class="kpi">
@@ -30,7 +30,7 @@
         {{ topo.delta_orc|round(1) }}%
       {% else %}—{% endif %}
     </strong>
-    <div class="muted">{{ br_money(topo.inv_usado) }} / {{ br_money(topo.orc_meta) }}</div>
+    <div class="muted">{{ topo.inv_usado|br_money }} / {{ topo.orc_meta|br_money }}</div>
   </div>
 
   <div class="kpi">
