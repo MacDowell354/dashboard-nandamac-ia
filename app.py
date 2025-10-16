@@ -262,20 +262,54 @@ def extract_projecao(df_raw: pd.DataFrame) -> pd.DataFrame:
 
 def extract_profissoes_por_canal(df_raw: pd.DataFrame) -> pd.DataFrame:
     """
-    Bloco 'PROFISSOES': primeira coluna = profissão; demais colunas = canais.
-    Terminamos quando a primeira coluna contém 'Total Geral' ou linha vazia.
+    Lê a seção 'PROFISSOES' mesmo com linhas de cabeçalho/explicação e pares de colunas Qtd/%.
+    Regras:
+      - Detecta dinamicamente a linha de header 'de verdade' (com nomes de canais).
+      - Usa apenas as colunas de **quantidade** (ignora as de '%').
+      - Recorta dados de profissões até a linha 'Total Geral'.
+    Retorna um DataFrame: Profissao | <canal1> | <canal2> | ...
     """
     if df_raw.empty:
         return pd.DataFrame()
 
+    # 1) Onde começa a seção
     start = _first_match_contains(df_raw[0], "profissoes")
     if start is None:
         _log("Bloco 'PROFISSOES' não encontrado.")
         return pd.DataFrame()
 
-    header_row = start + 2
-    data_start = header_row + 1
+    # 2) Procurar a melhor linha de cabeçalho entre start+1 e start+15
+    header_row = None
+    candidate_rows = range(start + 1, min(len(df_raw), start + 16))
+    channel_keywords = ["youtube", "facebook", "instagram", "email", "manychat", "redirect", "total"]
+    for r in candidate_rows:
+        row = df_raw.iloc[r].astype(str).map(_strip_accents_lower).tolist()
+        non_empty = [c for c in row if c not in ("", "nan")]
+        if len(non_empty) >= 4:
+            score = sum(1 for c in row if any(kw in c for kw in channel_keywords))
+            if score >= 2:  # pelo menos 2 palavras-chave de canais
+                header_row = r
+                break
 
+    if header_row is None:
+        # fallback: assume header = start+2 (layout antigo)
+        header_row = start + 2
+
+    # 3) A linha de dados começa abaixo do header; achamos a primeira linha "com números"
+    data_start = header_row + 1
+    while data_start < len(df_raw):
+        row = df_raw.iloc[data_start]
+        a0 = str(row.iloc[0]).strip()
+        # Heurística: primeira coluna com texto (profissão) e pelo menos 2 números na linha
+        nums = pd.to_numeric(row[1:].astype(str).str.replace("%","",regex=False)
+                                      .str.replace(".","",regex=False)
+                                      .str.replace(",",".",regex=False),
+                             errors="coerce")
+        if a0 not in ("", "nan") and nums.notna().sum() >= 2:
+            break
+        data_start += 1
+
+    # 4) Encontrar o fim: até 'Total Geral' ou linha completamente vazia
     end = data_start
     while end < len(df_raw):
         first = str(df_raw.iloc[end, 0]).strip()
@@ -283,37 +317,69 @@ def extract_profissoes_por_canal(df_raw: pd.DataFrame) -> pd.DataFrame:
             break
         end += 1
 
+    # 5) Recorte + header
     sub = df_raw.iloc[header_row:end].reset_index(drop=True)
+    if len(sub) < 2:
+        _log("PROFISSOES: estrutura inesperada (header curto).")
+        return pd.DataFrame()
+
     sub.columns = sub.iloc[0].tolist()
     sub = sub[1:].reset_index(drop=True)
     sub = _dedupe_columns(sub).fillna("")
 
+    # 6) Normaliza primeira coluna para 'Profissao'
     if sub.columns[0] != "Profissao":
         cols = list(sub.columns)
         cols[0] = "Profissao"
         sub.columns = cols
 
-    drop_cols = [c for c in sub.columns if c != "Profissao" and _col_is_all_empty(sub, c)]
-    if drop_cols:
-        sub = sub.drop(columns=drop_cols)
-
-    for c in sub.columns:
-        if c == "Profissao":
+    # 7) Escolher apenas colunas de **quantidade** (ignorar %)
+    # Critérios: nome NÃO contém '%'; coluna é majoritariamente numérica após normalização; 
+    # e não está 100% vazia.
+    keep = ["Profissao"]
+    for c in sub.columns[1:]:
+        name_norm = _strip_accents_lower(c)
+        if "%" in name_norm:
             continue
         obj = sub.loc[:, c]
         if isinstance(obj, pd.DataFrame):
+            # agrega subcolunas (caso ainda existam duplicadas)
             num = obj.apply(lambda s: pd.to_numeric(
-                s.astype(str).str.replace("%","",regex=False).str.replace(".","",regex=False).str.replace(",",".",regex=False),
+                s.astype(str).str.replace("%","",regex=False)
+                              .str.replace(".","",regex=False)
+                              .str.replace(",",".",regex=False),
                 errors="coerce"
             )).fillna(0)
-            sub[c] = num.sum(axis=1)
+            series = num.sum(axis=1)
         else:
-            serie = obj.astype(str).str.replace("%","",regex=False).str.replace(".","",regex=False).str.replace(",",".",regex=False)
-            nums = pd.to_numeric(serie, errors="coerce")
-            if nums.notna().mean() >= 0.5:
-                sub[c] = nums.fillna(0)
+            series = pd.to_numeric(
+                obj.astype(str).str.replace("%","",regex=False)
+                               .str.replace(".","",regex=False)
+                               .str.replace(",",".",regex=False),
+                errors="coerce"
+            )
+        if series.notna().mean() >= 0.5 and (series.fillna(0) != 0).any():
+            keep.append(c)
+
+    sub = sub[keep]
+
+    # 8) Converter colunas mantidas para números
+    for c in sub.columns:
+        if c == "Profissao":
+            continue
+        sub[c] = pd.to_numeric(
+            sub[c].astype(str).str.replace("%","",regex=False)
+                               .str.replace(".","",regex=False)
+                               .str.replace(",",".",regex=False),
+            errors="coerce"
+        ).fillna(0)
+
+    # 9) Tirar linhas de separação (Profissao vazia) e a linha "Total Geral" se tiver entrado
+    sub = sub[sub["Profissao"].astype(str).str.strip().ne("")].copy()
+    sub = sub[~sub["Profissao"].astype(str).str.lower().str.startswith("total geral")].reset_index(drop=True)
 
     return sub
+
 
 def extract_estado_profissao(df_raw: pd.DataFrame) -> pd.DataFrame:
     """Tabela 'ESTADO X PROFISSÃO' (primeira coluna = Estado)."""
