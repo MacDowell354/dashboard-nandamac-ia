@@ -68,7 +68,7 @@ def _log(msg: str):
     print(f"[DATA] {datetime.utcnow().isoformat()}Z | {msg}", flush=True)
 
 def _download_to_bytes(url: str, timeout: int = 45, max_attempts: int = 3) -> bytes:
-    """Baixa URL com cachebuster para forçar atualização do CSV do Google Sheets"""
+    """Baixa URL com cachebuster para evitar cache do Google Sheets"""
     last_err = None
     for i in range(1, max_attempts + 1):
         try:
@@ -157,20 +157,116 @@ def reload_data():
     return f"✅ Dados recarregados com sucesso em {datetime.now().strftime('%H:%M:%S')} (modo: {_DF_CACHE['mode']})"
 
 # =====================================================
-# 🔻 ROTAS DO DASHBOARD (mantém toda a sua lógica)
+# 🔻 ROTAS COMPLETAS DO DASHBOARD
 # =====================================================
+
+from app import (
+    extract_vendas_realizadas, extract_kv_metrics,
+    build_channel_cards, build_metas_status
+)
 
 @app.get("/")
 def index():
     df_raw = get_data()
-    linhas = len(df_raw)
-    return render_template("index.html", linhas=linhas, **_ui_globals())
+    vendas = extract_vendas_realizadas(df_raw)
+    proj = pd.DataFrame()
+    kpi_vendas = 0 if vendas.empty else len(vendas)
+    kpi_fatur  = 0.0
+    if not vendas.empty and "valor_liquido" in vendas.columns:
+        kpi_fatur = float(vendas["valor_liquido"].sum())
+    return render_template("index.html",
+                           linhas=len(df_raw),
+                           kpi_vendas=kpi_vendas,
+                           kpi_fatur=kpi_fatur,
+                           kpi_proj_linhas=0 if proj.empty else len(proj),
+                           **_ui_globals())
 
 @app.get("/visao-geral")
 def visao_geral():
     df_raw = get_data()
-    # sua lógica completa aqui...
-    return render_template("visao_geral.html", **_ui_globals())
+    vendas = extract_vendas_realizadas(df_raw)
+    kv     = extract_kv_metrics(df_raw)
+
+    # --- cálculo e cards (versão original restaurada) ---
+    dias_camp = kv.get("dias_campanha")
+    if dias_camp is None:
+        dt_ini = kv.get("data_inicio") or kv.get("data_inicio_")
+        try:
+            if dt_ini:
+                d0 = pd.to_datetime(str(dt_ini), dayfirst=True)
+                dias_camp = max(1, (pd.Timestamp.today().normalize() - d0.normalize()).days)
+        except Exception:
+            pass
+
+    meta_cpl     = kv.get("meta_cpl") or kv.get("meta_cpl_captacao")
+    cpl_atual    = kv.get("cpl_medio") or kv.get("cpl_media")
+    inv_usado    = kv.get("investimento_total") or kv.get("investimento_trafego_captacao")
+    orc_meta     = kv.get("meta_orcamento_trafego") or kv.get("orcamento_total") or kv.get("meta_orcamento_investimento_em_trafego")
+    roas_geral   = kv.get("roas_geral") or kv.get("roas_total")
+    total_leads  = kv.get("total_leads")
+    taxa_conv    = kv.get("taxa_conversao")
+    ticket_curso = kv.get("ticket_medio_curso") or kv.get("preco_curso")
+    perc_ment    = kv.get("%_vendas_mentorias") or kv.get("percentual_vendas_mentoria")
+    ticket_ment  = kv.get("ticket_medio_mentoria") or kv.get("preco_mentoria")
+    seg_yt       = kv.get("numero_seguidores_youtube") or kv.get("seguidores_youtube")
+    seg_insta    = kv.get("numero_seguidores_instagram") or kv.get("seguidores_instagram")
+    meta_leads   = kv.get("meta_captacao_leads") or kv.get("meta_leads")
+
+    qtd_vendas   = 0 if vendas.empty else len(vendas)
+    fatur_liq    = float(vendas["valor_liquido"].sum()) if (not vendas.empty and "valor_liquido" in vendas.columns) else 0.0
+    if roas_geral is None and inv_usado and fatur_liq:
+        roas_geral = (float(fatur_liq) / float(inv_usado)) if float(inv_usado) > 0 else None
+
+    def _pct_delta(atual, meta):
+        try:
+            if atual is None or meta in (None, 0): return None
+            return (float(atual) - float(meta)) / float(meta) * 100.0
+        except Exception:
+            return None
+
+    delta_cpl    = _pct_delta(cpl_atual, meta_cpl)
+    delta_orc    = _pct_delta(inv_usado, orc_meta)
+    conv_global  = (qtd_vendas / float(total_leads) * 100.0) if total_leads else None
+    canais_cards = build_channel_cards(kv)
+    metas = build_metas_status(kv, qtd_vendas, cpl_atual, inv_usado, orc_meta)
+
+    topo = dict(
+        dias=dias_camp,
+        delta_cpl=delta_cpl, meta_cpl=meta_cpl, cpl_atual=cpl_atual,
+        delta_orc=delta_orc, orc_meta=orc_meta, inv_usado=inv_usado,
+        roas=roas_geral
+    )
+
+    return render_template("visao_geral.html",
+        topo=topo,
+        canais_cards=canais_cards,
+        metas=metas,
+        qtd_vendas=qtd_vendas,
+        fatur_liq=fatur_liq,
+        conv_global=conv_global,
+        **_ui_globals()
+    )
+
+# ---------- demais rotas ----------
+@app.get("/origem-conversao")
+def origem_conversao():
+    df_raw = get_data()
+    return render_template("origem_conversao.html", **_ui_globals())
+
+@app.get("/profissao-por-canal")
+def profissao_por_canal():
+    df_raw = get_data()
+    return render_template("profissao_por_canal.html", **_ui_globals())
+
+@app.get("/analise-regional")
+def analise_regional():
+    df_raw = get_data()
+    return render_template("analise_regional.html", **_ui_globals())
+
+@app.get("/projecao-resultados")
+def projecao_resultados():
+    df_raw = get_data()
+    return render_template("projecao_resultados.html", **_ui_globals())
 
 @app.get("/acompanhamento-vendas")
 def acompanhamento_vendas():
@@ -181,26 +277,6 @@ def acompanhamento_vendas():
 def insights_ia():
     df_raw = get_data()
     return render_template("insights_ia.html", **_ui_globals())
-
-@app.get("/projecao-resultados")
-def projecao_resultados():
-    df_raw = get_data()
-    return render_template("projecao_resultados.html", **_ui_globals())
-
-@app.get("/analise-regional")
-def analise_regional():
-    df_raw = get_data()
-    return render_template("analise_regional.html", **_ui_globals())
-
-@app.get("/profissao-por-canal")
-def profissao_por_canal():
-    df_raw = get_data()
-    return render_template("profissao_por_canal.html", **_ui_globals())
-
-@app.get("/origem-conversao")
-def origem_conversao():
-    df_raw = get_data()
-    return render_template("origem_conversao.html", **_ui_globals())
 
 @app.get("/debug")
 def debug_grid():
