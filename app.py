@@ -1,4 +1,4 @@
-# app.py — versão consolidada e funcional (Render + cachebuster + reload)
+# app.py — versão final consolidada (Render + cachebuster + reload + rotas completas)
 # -----------------------------------------
 # Flask + loader robusto + extrações "inteligentes" da planilha
 # Dep.: Flask, gunicorn, pandas, numpy<2.1, requests, openpyxl
@@ -9,7 +9,6 @@
 
 import os, io, time, math, unicodedata, random
 from datetime import datetime, timedelta
-from typing import Tuple, Optional
 import pandas as pd
 import requests
 from flask import Flask, render_template, request
@@ -148,23 +147,43 @@ def build_channel_cards(kv: dict):
     for canal in ["Facebook", "Google Ads", "YouTube"]:
         cpl = kv.get(f"{canal.lower().replace(' ','_')}_cpl")
         roas = kv.get(f"{canal.lower().replace(' ','_')}_roas")
+
+        # Conversões seguras
+        def safe_num(v):
+            try:
+                return float(v)
+            except Exception:
+                return None
+
+        cpl_val = safe_num(cpl)
+        roas_val = safe_num(roas)
+        tone = "positivo" if (roas_val and roas_val >= 2) else "alerta"
+
         if cpl or roas:
             canais.append({
                 "title": canal,
-                "body": f"CPL {cpl or '—'} | ROAS {roas or '—'}",
-                "tone": "positivo" if roas and float(roas) >= 2 else "alerta"
+                "body": f"CPL {cpl_val if cpl_val else '—'} | ROAS {roas_val if roas_val else '—'}",
+                "tone": tone
             })
     return canais
 
 def build_metas_status(kv, qtd_vendas, cpl, inv, orc):
     metas = []
     meta_cpl = kv.get("meta_cpl") or kv.get("meta_cpl_captacao")
+    try:
+        meta_cpl = float(meta_cpl)
+    except Exception:
+        meta_cpl = None
+    try:
+        cpl = float(cpl)
+    except Exception:
+        cpl = None
     if meta_cpl and cpl:
         metas.append({
             "nome": "CPL Médio",
             "atual": cpl,
             "meta": meta_cpl,
-            "status": "verde" if float(cpl) <= float(meta_cpl) else "vermelho"
+            "status": "verde" if cpl <= meta_cpl else "vermelho"
         })
     return metas
 
@@ -233,6 +252,32 @@ def visao_geral():
         qtd_vendas=len(vendas),
         **_ui_globals()
     )
+
+# ---------- Rotas complementares ----------
+@app.get("/origem-conversao")
+def origem_conversao():
+    df = get_data()
+    return render_template("origem_conversao.html", **_ui_globals())
+
+@app.get("/profissao-por-canal")
+def profissao_por_canal():
+    df = get_data()
+    return render_template("profissao_por_canal.html", **_ui_globals())
+
+@app.get("/analise-regional")
+def analise_regional():
+    df = get_data()
+    return render_template("analise_regional.html", **_ui_globals())
+
+@app.get("/projecao-resultados")
+def projecao_resultados():
+    df = get_data()
+    return render_template("projecao_resultados.html", **_ui_globals())
+
+@app.get("/insights-ia")
+def insights_ia():
+    df = get_data()
+    return render_template("insights_ia.html", **_ui_globals())
 
 @app.get("/debug")
 def debug():
