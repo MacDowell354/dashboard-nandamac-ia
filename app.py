@@ -157,10 +157,9 @@ def reload_data():
     return f"✅ Dados recarregados com sucesso em {datetime.now().strftime('%H:%M:%S')} (modo: {_DF_CACHE['mode']})"
 
 # =====================================================
-# 🔻 ROTAS COMPLETAS DO DASHBOARD
+# 🔻 ROTAS DO DASHBOARD (completa, incluindo visao-geral original)
 # =====================================================
-
-from app import (
+from utils import (
     extract_vendas_realizadas, extract_kv_metrics,
     build_channel_cards, build_metas_status
 )
@@ -187,7 +186,6 @@ def visao_geral():
     vendas = extract_vendas_realizadas(df_raw)
     kv     = extract_kv_metrics(df_raw)
 
-    # --- cálculo e cards (versão original restaurada) ---
     dias_camp = kv.get("dias_campanha")
     if dias_camp is None:
         dt_ini = kv.get("data_inicio") or kv.get("data_inicio_")
@@ -247,7 +245,10 @@ def visao_geral():
         **_ui_globals()
     )
 
-# ---------- demais rotas ----------
+@app.get("/reload")
+def reload_data_manual():
+    return reload_data()
+
 @app.get("/origem-conversao")
 def origem_conversao():
     df_raw = get_data()
