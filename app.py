@@ -1,12 +1,12 @@
-# app.py
+# app.py — versão consolidada e funcional (Render + cachebuster + reload)
 # -----------------------------------------
 # Flask + loader robusto + extrações "inteligentes" da planilha
 # Dep.: Flask, gunicorn, pandas, numpy<2.1, requests, openpyxl
 # ENV:
 #   - GOOGLE_SHEET_CSV_URL  -> .../export?format=csv&gid=XXXX   (prioridade)
-#   - DATA_XLSX_PATH        -> (opcional, fallback)
 #   - DATA_CACHE_TTL_SECONDS (opcional; default 300)
 # -----------------------------------------
+
 import os, io, time, math, unicodedata, random
 from datetime import datetime, timedelta
 from typing import Tuple, Optional
@@ -59,9 +59,8 @@ def _ui_globals():
 
 # ---------- Loader ----------
 GOOGLE_SHEET_CSV_URL = os.getenv("GOOGLE_SHEET_CSV_URL", "").strip()
-DATA_XLSX_PATH       = os.getenv("DATA_XLSX_PATH", "").strip()
-CACHE_TTL_SECONDS    = int(os.getenv("DATA_CACHE_TTL_SECONDS", "300"))
-CACHE_DIR            = os.path.join(os.getcwd(), "data")
+CACHE_TTL_SECONDS = int(os.getenv("DATA_CACHE_TTL_SECONDS", "300"))
+CACHE_DIR = os.path.join(os.getcwd(), "data")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 def _log(msg: str):
@@ -81,9 +80,7 @@ def _download_to_bytes(url: str, timeout: int = 45, max_attempts: int = 3) -> by
             return r.content
         except Exception as e:
             last_err = e
-            wait = 2 ** i
-            _log(f"Falha: {e} | tentando novamente em {wait}s")
-            time.sleep(wait)
+            time.sleep(2 ** i)
     raise last_err
 
 def _fetch_google_csv(url: str) -> pd.DataFrame:
@@ -93,23 +90,15 @@ def _fetch_google_csv(url: str) -> pd.DataFrame:
     _log(f"CSV lido: linhas={len(df)} colunas={df.shape[1]}")
     return df
 
-def _resolve_source() -> Tuple[Optional[pd.DataFrame], str]:
-    if GOOGLE_SHEET_CSV_URL:
-        try:
-            return _fetch_google_csv(GOOGLE_SHEET_CSV_URL), "google-csv"
-        except Exception as e:
-            _log(f"ERRO CSV: {e}")
-    _log("Nenhuma fonte configurada.")
-    return None, "none"
-
 _DF_CACHE = {"df": None, "loaded_at": None, "mode": None}
 
 def load_dataframe() -> pd.DataFrame:
-    df, mode = _resolve_source()
-    if df is None: df = pd.DataFrame()
+    if not GOOGLE_SHEET_CSV_URL:
+        _log("Nenhuma URL de planilha configurada.")
+        return pd.DataFrame()
+    df = _fetch_google_csv(GOOGLE_SHEET_CSV_URL)
     globals()["LAST_LOADED"] = datetime.utcnow()
-    globals()["DATA_MODE"]   = mode
-    _log(f"Fonte: {mode} | shape={df.shape}")
+    globals()["DATA_MODE"]   = "google-csv"
     return df
 
 def get_data() -> pd.DataFrame:
@@ -119,58 +108,140 @@ def get_data() -> pd.DataFrame:
         _log("Recarregando dados (cache expirado ou inexistente)...")
         _DF_CACHE["df"] = load_dataframe()
         _DF_CACHE["loaded_at"] = now
-        _DF_CACHE["mode"] = globals().get("DATA_MODE")
+        _DF_CACHE["mode"] = "google-csv"
         _log(f"Cache atualizado | TTL={CACHE_TTL_SECONDS}s | mode={_DF_CACHE['mode']}")
     else:
         age = int((now - _DF_CACHE["loaded_at"]).total_seconds())
         _log(f"Usando cache (idade={age}s / TTL={CACHE_TTL_SECONDS}s)")
     return _DF_CACHE["df"]
 
-# ---------- Funções analíticas simplificadas ----------
-def extract_vendas_realizadas(df_raw: pd.DataFrame):
-    return pd.DataFrame(columns=["Data", "valor_liquido"])  # placeholder seguro
+# ---------- Funções analíticas ----------
+def extract_kv_metrics(df: pd.DataFrame):
+    kv = {}
+    try:
+        for i in range(len(df)):
+            row = [str(x).strip() for x in df.iloc[i].tolist() if str(x).strip()]
+            if len(row) >= 2:
+                kv[row[0].lower().replace(" ", "_")] = row[1]
+    except Exception as e:
+        _log(f"extract_kv_metrics erro: {e}")
+    return kv
 
-def extract_kv_metrics(df_raw: pd.DataFrame):
-    return {"dias_campanha": 1, "meta_cpl": 15, "cpl_medio": 12, "total_leads": 100}
+def extract_vendas_realizadas(df: pd.DataFrame):
+    try:
+        idx = df[df[0].astype(str).str.contains("vendas_realizadas", case=False, na=False)].index
+        if len(idx) == 0:
+            return pd.DataFrame()
+        start = idx[0] + 2
+        sub = df.iloc[start:].dropna(how="all").reset_index(drop=True)
+        sub.columns = sub.iloc[0]
+        sub = sub[1:]
+        if "Data" in sub.columns:
+            sub["Data"] = pd.to_datetime(sub["Data"], errors="coerce", dayfirst=True)
+        return sub
+    except Exception as e:
+        _log(f"extract_vendas_realizadas erro: {e}")
+        return pd.DataFrame()
 
 def build_channel_cards(kv: dict):
-    return [{"title": "Facebook", "body": "Canal principal", "tone": "positivo"}]
+    canais = []
+    for canal in ["Facebook", "Google Ads", "YouTube"]:
+        cpl = kv.get(f"{canal.lower().replace(' ','_')}_cpl")
+        roas = kv.get(f"{canal.lower().replace(' ','_')}_roas")
+        if cpl or roas:
+            canais.append({
+                "title": canal,
+                "body": f"CPL {cpl or '—'} | ROAS {roas or '—'}",
+                "tone": "positivo" if roas and float(roas) >= 2 else "alerta"
+            })
+    return canais
 
 def build_metas_status(kv, qtd_vendas, cpl, inv, orc):
-    return [{"nome": "CPL Médio", "status": "verde"}]
+    metas = []
+    meta_cpl = kv.get("meta_cpl") or kv.get("meta_cpl_captacao")
+    if meta_cpl and cpl:
+        metas.append({
+            "nome": "CPL Médio",
+            "atual": cpl,
+            "meta": meta_cpl,
+            "status": "verde" if float(cpl) <= float(meta_cpl) else "vermelho"
+        })
+    return metas
 
-# ---------- Endpoint manual de recarregamento ----------
+# ---------- Endpoint manual ----------
 @app.get("/reload")
 def reload_data():
     _log("Recarregando dados manualmente via /reload...")
     _DF_CACHE["df"] = load_dataframe()
     _DF_CACHE["loaded_at"] = datetime.utcnow()
-    _DF_CACHE["mode"] = globals().get("DATA_MODE")
-    return f"✅ Dados recarregados com sucesso em {datetime.now().strftime('%H:%M:%S')} (modo: {_DF_CACHE['mode']})"
+    _DF_CACHE["mode"] = "google-csv"
+    return f"✅ Dados recarregados com sucesso em {datetime.now().strftime('%H:%M:%S')}"
 
 # ---------- Rotas ----------
 @app.get("/")
 def index():
-    df_raw = get_data()
-    return render_template("index.html", linhas=len(df_raw), **_ui_globals())
+    df = get_data()
+    vendas = extract_vendas_realizadas(df)
+    kpi_vendas = 0 if vendas.empty else len(vendas)
+    kpi_fatur = float(vendas["valor_liquido"].sum()) if ("valor_liquido" in vendas.columns) else 0.0
+    return render_template("index.html",
+                           linhas=len(df),
+                           kpi_vendas=kpi_vendas,
+                           kpi_fatur=kpi_fatur,
+                           **_ui_globals())
 
 @app.get("/visao-geral")
 def visao_geral():
-    df_raw = get_data()
-    vendas = extract_vendas_realizadas(df_raw)
-    kv = extract_kv_metrics(df_raw)
-    dias_camp = kv.get("dias_campanha", 0)
-    topo = dict(dias=dias_camp)
-    return render_template("visao_geral.html", topo=topo, **_ui_globals())
+    df = get_data()
+    vendas = extract_vendas_realizadas(df)
+    kv = extract_kv_metrics(df)
+
+    def _safe_float(val):
+        try:
+            return float(val)
+        except Exception:
+            return None
+
+    dias = kv.get("dias_campanha") or 0
+    meta_cpl = _safe_float(kv.get("meta_cpl"))
+    cpl_atual = _safe_float(kv.get("cpl_medio"))
+    inv_usado = _safe_float(kv.get("investimento_total"))
+    orc_meta  = _safe_float(kv.get("orcamento_total"))
+
+    delta_cpl = ((cpl_atual - meta_cpl) / meta_cpl * 100) if (meta_cpl and cpl_atual) else 0.0
+    delta_orc = ((inv_usado - orc_meta) / orc_meta * 100) if (inv_usado and orc_meta) else 0.0
+
+    topo = dict(
+        dias=dias or 0,
+        delta_cpl=delta_cpl or 0.0,
+        meta_cpl=meta_cpl or 0.0,
+        cpl_atual=cpl_atual or 0.0,
+        delta_orc=delta_orc or 0.0,
+        orc_meta=orc_meta or 0.0,
+        inv_usado=inv_usado or 0.0,
+        roas=kv.get("roas_geral") or 0.0,
+    )
+
+    canais = build_channel_cards(kv)
+    metas = build_metas_status(kv, len(vendas), cpl_atual, inv_usado, orc_meta)
+
+    return render_template(
+        "visao_geral.html",
+        topo=topo,
+        canais_cards=canais,
+        metas=metas,
+        qtd_vendas=len(vendas),
+        **_ui_globals()
+    )
 
 @app.get("/debug")
-def debug_grid():
-    df_raw = get_data()
-    sample = df_raw.head(10).fillna("").astype(str).to_dict(orient="records")
-    cols = list(range(df_raw.shape[1]))
+def debug():
+    df = get_data()
+    sample = df.head(20).fillna("").astype(str).to_dict(orient="records")
+    cols = list(range(df.shape[1]))
     return render_template("debug.html", cols=cols, rows=sample, **_ui_globals())
 
-# ---------- Execução ----------
+# ---------- Execução local ----------
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
