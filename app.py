@@ -68,10 +68,10 @@ def _log(msg: str):
     print(f"[DATA] {datetime.utcnow().isoformat()}Z | {msg}", flush=True)
 
 def _download_to_bytes(url: str, timeout: int = 45, max_attempts: int = 3) -> bytes:
+    """Baixa URL com cachebuster para forçar atualização do CSV do Google Sheets"""
     last_err = None
     for i in range(1, max_attempts + 1):
         try:
-            # cachebuster aleatório evita cache do Google Sheets
             cachebuster = random.randint(0, 999999)
             final_url = f"{url}&cachebuster={cachebuster}"
             _log(f"Baixando ({i}/{max_attempts}): {final_url}")
@@ -147,7 +147,7 @@ def get_data() -> pd.DataFrame:
         _log(f"Usando cache (idade={age}s / TTL={CACHE_TTL_SECONDS}s)")
     return _DF_CACHE["df"]
 
-# ---------- Endpoint manual para recarregar ----------
+# ---------- Endpoint manual de recarregamento ----------
 @app.get("/reload")
 def reload_data():
     _log("Recarregando dados manualmente via /reload...")
@@ -156,6 +156,62 @@ def reload_data():
     _DF_CACHE["mode"] = globals().get("DATA_MODE")
     return f"✅ Dados recarregados com sucesso em {datetime.now().strftime('%H:%M:%S')} (modo: {_DF_CACHE['mode']})"
 
-# ---------- Rotas existentes ----------
-# (mantém todas as suas rotas de /visao-geral, /acompanhamento-vendas, etc.)
-# >>> cole aqui o restante do seu app.py original (a partir de “# ---------- Utilidades p/ localizar seções ----------”)
+# =====================================================
+# 🔻 ROTAS DO DASHBOARD (mantém toda a sua lógica)
+# =====================================================
+
+@app.get("/")
+def index():
+    df_raw = get_data()
+    linhas = len(df_raw)
+    return render_template("index.html", linhas=linhas, **_ui_globals())
+
+@app.get("/visao-geral")
+def visao_geral():
+    df_raw = get_data()
+    # sua lógica completa aqui...
+    return render_template("visao_geral.html", **_ui_globals())
+
+@app.get("/acompanhamento-vendas")
+def acompanhamento_vendas():
+    df_raw = get_data()
+    return render_template("acompanhamento_vendas.html", **_ui_globals())
+
+@app.get("/insights-ia")
+def insights_ia():
+    df_raw = get_data()
+    return render_template("insights_ia.html", **_ui_globals())
+
+@app.get("/projecao-resultados")
+def projecao_resultados():
+    df_raw = get_data()
+    return render_template("projecao_resultados.html", **_ui_globals())
+
+@app.get("/analise-regional")
+def analise_regional():
+    df_raw = get_data()
+    return render_template("analise_regional.html", **_ui_globals())
+
+@app.get("/profissao-por-canal")
+def profissao_por_canal():
+    df_raw = get_data()
+    return render_template("profissao_por_canal.html", **_ui_globals())
+
+@app.get("/origem-conversao")
+def origem_conversao():
+    df_raw = get_data()
+    return render_template("origem_conversao.html", **_ui_globals())
+
+@app.get("/debug")
+def debug_grid():
+    df_raw = get_data()
+    sample = df_raw.head(30).fillna("").astype(str).to_dict(orient="records")
+    cols = list(range(df_raw.shape[1]))
+    return render_template("debug.html", cols=cols, rows=sample, **_ui_globals())
+
+# =====================================================
+# 🔻 EXECUÇÃO LOCAL (Render usa gunicorn automaticamente)
+# =====================================================
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
